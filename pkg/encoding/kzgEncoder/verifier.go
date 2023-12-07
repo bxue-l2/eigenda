@@ -1,11 +1,14 @@
 package kzgEncoder
 
 import (
+	"bytes"
+	"encoding/gob"
 	"errors"
 	"math"
 
 	rs "github.com/Layr-Labs/eigenda/pkg/encoding/encoder"
 	kzg "github.com/Layr-Labs/eigenda/pkg/kzg"
+	bls "github.com/Layr-Labs/eigenda/pkg/kzg/bn254"
 	wbls "github.com/Layr-Labs/eigenda/pkg/kzg/bn254"
 )
 
@@ -77,6 +80,85 @@ func (v *KzgEncoderGroup) VerifyCommit(commit, lowDegreeProof *wbls.G1Point, deg
 		return errors.New("low degree proof fails")
 	}
 	return nil
+
+}
+
+func GenLenProofRandomness(commits []wbls.G1Point) (bls.Fr, error) {
+	var buffer bytes.Buffer
+	enc := gob.NewEncoder(&buffer)
+
+	err := enc.Encode(commits)
+	if err != nil {
+		return bls.ZERO, err
+	}
+
+	var randomFr bls.Fr
+
+	err = wbls.HashToSingleField(&randomFr, buffer.Bytes())
+	if err != nil {
+		return bls.ZERO, err
+	}
+
+	return randomFr, nil
+}
+
+func (v *KzgEncoderGroup) VerifyBatchedLengthProof(commits, lowDegreeProofs []wbls.G1Point, degrees []uint64) error {
+
+	n := len(commits)
+
+	r, err := GenLenProofRandomness(commits)
+	if err != nil {
+		return err
+	}
+
+	randomsFr := make([]bls.Fr, n)
+	onesFr := make([]bls.Fr, n)
+
+	wbls.CopyFr(&randomsFr[0], &r)
+
+	var sumRandomsFr bls.Fr
+	wbls.CopyFr(&sumRandomsFr, &wbls.ZERO)
+
+	// power of r
+	for j := 0; j < n-1; j++ {
+		wbls.MulModFr(&randomsFr[j+1], &randomsFr[j], &r)
+	}
+
+	// sum of randomFr
+	for j := 0; j < n; j++ {
+		wbls.AddModFr(&sumRandomsFr, &sumRandomsFr, &randomsFr[j])
+	}
+
+	//for  batchedCommits
+	for j := 0; j < n; j++ {
+		wbls.CopyFr(&onesFr[j], &wbls.ONE)
+	}
+
+	batchedCommits := wbls.LinCombG1(commits, randomsFr)
+
+	// claimed degree point, can potentially optimize by grouping nodes with same degree
+	degreesPoint := make([]wbls.G2Point, n)
+	for j := 0; j < n; j++ {
+		claimedDegree := degrees[j]
+		wbls.CopyG2(&degreesPoint[j], &v.Srs.G2[v.SRSOrder-1-claimedDegree])
+	}
+
+	batchedDegree := wbls.LinCombG2(degreesPoint, onesFr)
+
+	// batched degree proof
+
+	batchedProof := wbls.LinCombG1(lowDegreeProofs, onesFr)
+
+	// batched G2
+	var batchedG2 wbls.G2Point
+
+	wbls.MulG2(&batchedG2, &bls.GenG2, &sumRandomsFr)
+
+	if wbls.PairingsVerify(batchedCommits, batchedDegree, batchedProof, &batchedG2) {
+		return nil
+	} else {
+		return errors.New("batched low degree proof fails")
+	}
 
 }
 

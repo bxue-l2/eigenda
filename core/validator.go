@@ -130,17 +130,21 @@ func (v *chunkValidator) UpdateOperatorID(operatorID OperatorID) {
 
 func (v *chunkValidator) ValidateBatch(blobs []*BlobMessage, operatorState *OperatorState) error {
 	subBatchMap := make(map[EncodingParams]*SubBatch)
+	lenProofs := make([]BlobCommitments, len(blobs))
 
-	for _, blob := range blobs {
+	for z, blob := range blobs {
 		if len(blob.Bundles) != len(blob.BlobHeader.QuorumInfos) {
 			return errors.New("number of bundles does not match number of quorums")
 		}
 
+		// Collect all length proof
+		lenProofs[z] = blob.BlobHeader.BlobCommitments
+
 		// Validate the blob length
-		err := v.encoder.VerifyBlobLength(blob.BlobHeader.BlobCommitments)
-		if err != nil {
-			return err
-		}
+		//err := v.encoder.VerifyBlobLength(blob.BlobHeader.BlobCommitments)
+		//if err != nil {
+		//	return err
+		//}
 		// for each quorum
 		for _, quorumHeader := range blob.BlobHeader.QuorumInfos {
 			// Check if the operator is a member of the quorum
@@ -180,6 +184,12 @@ func (v *chunkValidator) ValidateBatch(blobs []*BlobMessage, operatorState *Oper
 				}
 			}
 		}
+	}
+
+	// verify length proof
+	err := v.encoder.VerifyBlobLengthBatched(lenProofs)
+	if err != nil {
+		return err
 	}
 
 	// Parallelize the universal verification for each subBatch

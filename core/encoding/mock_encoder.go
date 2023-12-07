@@ -40,6 +40,13 @@ func (e *MockEncoder) VerifyBlobLength(commitments core.BlobCommitments) error {
 	return args.Error(0)
 }
 
+func (e *MockEncoder) VerifyBlobLengthBatched(commitments []core.BlobCommitments) error {
+
+	args := e.Called(commitments)
+	time.Sleep(e.Delay)
+	return args.Error(0)
+}
+
 func (e *MockEncoder) Decode(chunks []*core.Chunk, indices []core.ChunkNumber, params core.EncodingParams, maxInputSize uint64) ([]byte, error) {
 	args := e.Called(chunks, indices, params, maxInputSize)
 	time.Sleep(e.Delay)

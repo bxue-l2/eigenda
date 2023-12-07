@@ -44,6 +44,9 @@ type Encoder interface {
 	// VerifyBlobLength takes in the commitments and returns an error if the blob length is invalid.
 	VerifyBlobLength(commitments BlobCommitments) error
 
+	// VerifyBlobLengthBatched takes in batch of commitments and return an error if any blob length is invalid
+	VerifyBlobLengthBatched(commitments []BlobCommitments) error
+
 	// Decode takes in the chunks, indices, and encoding parameters and returns the decoded blob
 	Decode(chunks []*Chunk, indices []ChunkNumber, params EncodingParams, inputSize uint64) ([]byte, error)
 }

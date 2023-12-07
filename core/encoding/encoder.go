@@ -6,6 +6,7 @@ import (
 	"github.com/Layr-Labs/eigenda/core"
 	"github.com/Layr-Labs/eigenda/pkg/encoding/encoder"
 	"github.com/Layr-Labs/eigenda/pkg/encoding/kzgEncoder"
+	wbls "github.com/Layr-Labs/eigenda/pkg/kzg/bn254"
 	lru "github.com/hashicorp/golang-lru/v2"
 )
 
@@ -100,6 +101,22 @@ func (e *Encoder) Encode(data []byte, params core.EncodingParams) (core.BlobComm
 func (e *Encoder) VerifyBlobLength(commitments core.BlobCommitments) error {
 
 	return e.EncoderGroup.VerifyCommit(commitments.Commitment.G1Point, commitments.LengthProof.G1Point, uint64(commitments.Length-1))
+
+}
+
+func (e *Encoder) VerifyBlobLengthBatched(commitments []core.BlobCommitments) error {
+	numBlob := len(commitments)
+	commits := make([]wbls.G1Point, numBlob)
+	proofs := make([]wbls.G1Point, numBlob)
+	degrees := make([]uint64, numBlob)
+
+	for i, c := range commitments {
+		commits[i] = *c.Commitment.G1Point
+		proofs[i] = *c.LengthProof.G1Point
+		degrees[i] = uint64(c.Length - 1)
+	}
+
+	return e.EncoderGroup.VerifyBatchedLengthProof(commits, proofs, degrees)
 
 }
 

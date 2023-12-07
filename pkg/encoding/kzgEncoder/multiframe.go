@@ -23,7 +23,7 @@ type Sample struct {
 // generate a random value using Fiat Shamir transform
 // we can also pseudo randomness generated locally, but we have to ensure no adv can manipulate it
 // Hashing everything takes about 1ms, so Fiat Shamir transform does not incur much cost
-func GenRandomness(params rs.EncodingParams, samples []Sample, m int) (bls.Fr, error) {
+func GenUniversalRandomness(params rs.EncodingParams, samples []Sample) (bls.Fr, error) {
 	var buffer bytes.Buffer
 	enc := gob.NewEncoder(&buffer)
 
@@ -67,7 +67,7 @@ func (group *KzgEncoderGroup) UniversalVerify(params rs.EncodingParams, samples 
 	n := len(samples)
 	fmt.Printf("Batch verify %v frames of %v symbols out of %v blobs \n", n, params.ChunkLen, m)
 
-	r, err := GenRandomness(params, samples, m)
+	r, err := GenUniversalRandomness(params, samples)
 	if err != nil {
 		return err
 	}
