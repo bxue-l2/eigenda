@@ -1,34 +1,99 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"math"
 	"math/rand"
+	"os"
 
 	"runtime"
 	"time"
 
 	rs "github.com/Layr-Labs/eigenda/pkg/encoding/encoder"
 	kzgRs "github.com/Layr-Labs/eigenda/pkg/encoding/kzgEncoder"
-	kzg "github.com/Layr-Labs/eigenda/pkg/kzg"
+
+	//kzg "github.com/Layr-Labs/eigenda/pkg/kzg"
 	bls "github.com/Layr-Labs/eigenda/pkg/kzg/bn254"
 )
 
 func main() {
 	// TestKzgRs()
-	err := kzg.WriteGeneratorPoints(30000)
-	if err != nil {
-		log.Println("WriteGeneratorPoints failed:", err)
-	}
+	//err := kzg.WriteGeneratorPoints(4194304)
+	//if err != nil {
+	//	log.Println("WriteGeneratorPoints failed:", err)
+	//}
+	PrecomputeSRS()
 }
 
-func TestKzgRs() {
-	numSymbols := 3
-	// encode parameters
-	numNode := uint64(4) // 200
-	numSys := uint64(2)  // 180
+func PrecomputeSRS() {
+	numSymbolList := []int{2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536} //, 131072
+	//numSymbolList := []int{2, 4, 8, 16, 32, 64, 128, 256, 512, 1024}
+	numNodeList := make([]uint64, 0)
+	power := 16 // 2^16 = 65536
+	numNode := uint64(1)
+	for i := 1; i <= power; i++ {
+		numNode = numNode * 2
+		numNodeList = append(numNodeList, numNode)
+	}
+
+	fmt.Println("numNodeList", numNodeList)
+
+	kzgConfig := &kzgRs.KzgConfig{
+		G1Path:    "srs-store/g1.point.4194304",
+		G2Path:    "srs-store/g2.point.4194304",
+		CacheDir:  "SRSTables",
+		SRSOrder:  4194304,
+		NumWorker: uint64(runtime.GOMAXPROCS(0)),
+	}
+
+	// create encoding object
+	kzgGroup, _ := kzgRs.NewKzgEncoderGroup(kzgConfig)
+	f, err := os.Create("error_log")
+	if err != nil {
+		fmt.Println("failed to create file")
+		return
+	}
+	w := bufio.NewWriter(f)
+
+	for _, numNode := range numNodeList {
+		numSys := numNode / 2
+		for _, numSymbols := range numSymbolList {
+			err := SetupKzgRs(numNode, numSys, numSymbols, kzgGroup)
+			if err != nil {
+				fmt.Println("error SetupKzgRs", err)
+				w.WriteString(fmt.Sprintln(err))
+			}
+		}
+	}
+
+}
+
+func SetupKzgRs(numNode, numSys uint64, numSymbols int, kzgGroup *kzgRs.KzgEncoderGroup) error {
 	numPar := numNode - numSys
+	ChunkLen := uint64(numSymbols) * numNode / numSys
+	// Prepare data
+	fmt.Printf("* Task Starts\n")
+	fmt.Printf("    Num Sys: %v\n", numSys)
+	fmt.Printf("    Num Par: %v\n", numPar)
+	//fmt.Printf("    Data size(byte): %v\n", len(inputBytes))
+
+	params := rs.EncodingParams{NumChunks: numNode, ChunkLen: ChunkLen}
+	_, err := kzgGroup.NewKzgEncoder(params)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func TestKzgRs(numNode, numSys uint64, numSymbols int) {
+	//numSymbols := 3
+	// encode parameters
+	//numNode := uint64(4) // 200
+	//numSys := uint64(2)  // 180
+	numPar := numNode - numSys
+	ChunkLen := uint64(numSymbols) * numNode / numSys
 	// Prepare data
 	fmt.Printf("* Task Starts\n")
 	fmt.Printf("    Num Sys: %v\n", numSys)
@@ -36,17 +101,17 @@ func TestKzgRs() {
 	//fmt.Printf("    Data size(byte): %v\n", len(inputBytes))
 
 	kzgConfig := &kzgRs.KzgConfig{
-		G1Path:    "g1.point",
-		G2Path:    "g2.point",
+		G1Path:    "g1.point.30000",
+		G2Path:    "g2.point.30000",
 		CacheDir:  "SRSTables",
-		SRSOrder:  3000,
+		SRSOrder:  30000,
 		NumWorker: uint64(runtime.GOMAXPROCS(0)),
 	}
 
 	// create encoding object
 	kzgGroup, _ := kzgRs.NewKzgEncoderGroup(kzgConfig)
 
-	params := rs.EncodingParams{NumChunks: 200, ChunkLen: 180}
+	params := rs.EncodingParams{NumChunks: numNode, ChunkLen: ChunkLen}
 	enc, _ := kzgGroup.NewKzgEncoder(params)
 
 	//inputFr := kzgRs.ToFrArray(inputBytes)
@@ -62,6 +127,7 @@ func TestKzgRs() {
 	//inputSize := uint64(len(inputFr))
 	commit, lowDegreeProof, frames, fIndices, err := enc.Encode(inputFr)
 	_ = lowDegreeProof
+
 	if err != nil {
 		log.Fatal(err)
 	}

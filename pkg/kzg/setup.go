@@ -31,8 +31,11 @@ import (
 	bls "github.com/Layr-Labs/eigenda/pkg/kzg/bn254"
 
 	"bufio"
+	"errors"
 	"fmt"
 	"log"
+	"math/big"
+	"math/rand"
 	"os"
 	"strconv"
 	"time"
@@ -140,11 +143,20 @@ func GenerateTestingSetup(secret string, n uint64) ([]bls.G1Point, []bls.G2Point
 // }
 
 func WriteGeneratorPoints(n uint64) error {
-	secret := "1927409816240961209460912649125"
+
 	ns := strconv.Itoa(int(n))
 
+	source := rand.NewSource(time.Now().UnixMilli())
+	rand := rand.New(source)
+	secret, mod := new(big.Int), new(big.Int)
+	mod, flag := mod.SetString("21888242871839275222246405745257275088548364400416034343698204186575808495617", 10)
+	if !flag {
+		return errors.New("cannot set mod")
+	}
+	secret = secret.Rand(rand, mod)
+
 	var s bls.Fr
-	bls.SetFr(&s, secret)
+	bls.SetFr(&s, secret.String())
 
 	var sPow bls.Fr
 	bls.CopyFr(&sPow, &bls.ONE)
