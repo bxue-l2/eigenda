@@ -38,8 +38,13 @@ type EthClient struct {
 
 var _ common.EthClient = (*EthClient)(nil)
 
-func NewClient(config EthClientConfig, rpcurl string, logger logging.Logger) (*EthClient, error) {
-	chainClient, err := ethclient.Dial(rpcurl)
+func NewClient(config EthClientConfig, rpcIndex int, logger logging.Logger) (*EthClient, error) {
+	if rpcIndex >= len(config.RPCURLs) {
+		return nil, fmt.Errorf("NewClient: index out of bound, array size is %v, requested is %v", len(config.RPCURLs), rpcIndex)
+	}
+
+	rpcUrl := config.RPCURLs[rpcIndex]
+	chainClient, err := ethclient.Dial(rpcUrl)
 	if err != nil {
 		return nil, fmt.Errorf("NewClient: cannot connect to provider: %w", err)
 	}
@@ -67,7 +72,7 @@ func NewClient(config EthClientConfig, rpcurl string, logger logging.Logger) (*E
 	}
 
 	c := &EthClient{
-		RPCURL:           rpcurl,
+		RPCURL:           rpcUrl,
 		privateKey:       privateKey,
 		chainID:          chainIDBigInt,
 		AccountAddress:   accountAddress,

@@ -87,7 +87,7 @@ func pluginOps(ctx *cli.Context) {
 		PrivateKeyString: *privateKey,
 		NumConfirmations: config.NumConfirmations,
 	}
-	client, err := geth.NewClient(ethConfig, config.ChainRpcUrl, logger)
+	client, err := geth.NewClient(ethConfig, 0, logger)
 	if err != nil {
 		log.Printf("Error: failed to create eth client: %v", err)
 		return
