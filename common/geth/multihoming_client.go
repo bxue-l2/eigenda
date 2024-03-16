@@ -2,6 +2,7 @@ package geth
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"time"
 
@@ -69,13 +70,12 @@ func (m *MultiHomingClient) SuggestGasTipCap(ctx context.Context) (*big.Int, err
 	var errLast error
 	for i := 0; i < m.NumRetries+1; i++ {
 		_, instance := m.GetRPCInstance()
-		instanceCtx, instanceCtxCancel := context.WithTimeout(ctx, m.Timeout)
-		result, err := instance.SuggestGasTipCap(instanceCtx)
-		instanceCtxCancel()
-		if err == nil {
-			return result, nil
-		}
-		m.ProcessError(err)
+
+		
+		result, err := instance.SuggestGasTipCap(ctx)
+
+		timedRetryFunction
+
 		errLast = err
 	}
 	return nil, errLast
@@ -709,4 +709,36 @@ func (m *MultiHomingClient) EnsureAnyTransactionEvaled(ctx context.Context, txs 
 func (m *MultiHomingClient) GetNoSendTransactOpts() (*bind.TransactOpts, error) {
 	_, instance := m.GetRPCInstance()
 	return instance.GetNoSendTransactOpts()
+}
+
+// Generic function used to instrument all the eth calls that we make below
+func timedRetryFunction[T any](
+	rpcCall func() (T, error),
+	ctx context.Context,
+	m *MultiHomingClient,
+) (value T, err error) {
+	resultChan := make(chan T)
+	errChan := make(chan error)
+	instanceCtx, instanceCtxCancel := context.WithTimeout(ctx, m.Timeout)
+	defer instanceCtxCancel()
+	go func() {
+		result, err := rpcCall()
+		if err != nil {
+			errChan <- err
+		} else {
+			resultChan <- result
+		}
+	}()
+
+	select {
+	case <-instanceCtx.Done():
+		err := fmt.Errorf("Timeout")
+		m.ProcessError(err)
+		return value, err
+	case result := <-resultChan:
+		return result, nil
+	case err := <-errChan:
+		m.ProcessError(err)
+		return value, err
+	}
 }

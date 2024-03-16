@@ -26,6 +26,7 @@ func makeTestMultihomingClient(t *testing.T, numRetries int) (*geth.MultiHomingC
 		PrivateKeyString: privateKey,
 		NumConfirmations: 0,
 		NumRetries:       numRetries,
+		
 	}
 
 	mockClient := geth.MultiHomingClient{}
