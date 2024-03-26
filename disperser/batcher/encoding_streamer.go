@@ -48,12 +48,16 @@ type StreamerConfig struct {
 	MaxBlobsToFetchFromStore int
 
 	FinalizationBlockDelay uint
+
+	// Used to determine if cached indexed Operator state is stale
+	BlockStaleMeasure uint
 }
 
 type EncodingStreamer struct {
 	StreamerConfig
 
-	mu sync.RWMutex
+	mu      sync.RWMutex
+	cacheMu sync.RWMutex
 
 	EncodedBlobstore     *encodedBlobStore
 	ReferenceBlockNumber uint
@@ -72,6 +76,9 @@ type EncodingStreamer struct {
 
 	// Used to keep track of the last evaluated key for fetching metadatas
 	exclusiveStartKey *disperser.BlobStoreExclusiveStartKey
+
+	// Used to maintain liveness when indexed chain state is inaccessible, protected by cacheMu
+	indexedOperatorStateCache core.IndexedOperatorState
 }
 
 type batch struct {
@@ -245,7 +252,7 @@ func (e *EncodingStreamer) RequestEncoding(ctx context.Context, encoderChan chan
 	e.logger.Debug("[encodingstreamer] new metadatas to encode", "numMetadata", len(metadatas), "duration", time.Since(stageTimer))
 
 	// Get the operator state
-	state, err := e.getOperatorState(ctx, metadatas, referenceBlockNumber)
+	state, err := e.getLatestOrCachedOperatorState(ctx, metadatas, referenceBlockNumber)
 	if err != nil {
 		return fmt.Errorf("error getting operator state: %w", err)
 	}
@@ -525,7 +532,7 @@ func (e *EncodingStreamer) CreateBatch() (*batch, error) {
 		i++
 	}
 
-	state, err := e.getOperatorState(context.Background(), metadatas, e.ReferenceBlockNumber)
+	state, err := e.getLatestOrCachedOperatorState(context.Background(), metadatas, e.ReferenceBlockNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -569,6 +576,39 @@ func (e *EncodingStreamer) MarkBlobPendingConfirmation(metadata *disperser.BlobM
 	return nil
 }
 
+func (e *EncodingStreamer) getLatestOrCachedOperatorState(
+	ctx context.Context,
+	metadatas []*disperser.BlobMetadata,
+	referenceBlockNumber uint,
+) (*core.IndexedOperatorState, error) {
+
+	state, err := e.getOperatorState(ctx, metadatas, referenceBlockNumber)
+	if err == nil {
+		// cache the result
+		e.cacheMu.Lock()
+		defer e.cacheMu.Unlock()
+		e.indexedOperatorStateCache = *state
+		return state, nil
+	}
+
+	blockNumber, err := e.chainState.GetCurrentBlockNumber()
+	if err != nil {
+		// if cannot get block number, optimistically use cached operator state for availability
+		e.logger.Errorf("cannot get current block number while accessing cached indexed operator state", "err", err)
+	} else {
+		// check if the block is too stale
+		if uint64(e.BlockStaleMeasure+referenceBlockNumber) < uint64(blockNumber) {
+			return nil, fmt.Errorf("cached state is too stale for block number %d with reference at %d", blockNumber, referenceBlockNumber)
+		}
+	}
+
+	e.cacheMu.RLock()
+	indexedOperatorStateCache := e.indexedOperatorStateCache
+	e.cacheMu.RUnlock()
+	fmt.Println("Used cached index")
+	return &indexedOperatorStateCache, nil
+}
+
 // getOperatorState returns the operator state for the blobs that have valid quorums
 func (e *EncodingStreamer) getOperatorState(ctx context.Context, metadatas []*disperser.BlobMetadata, blockNumber uint) (*core.IndexedOperatorState, error) {
 
@@ -591,6 +631,7 @@ func (e *EncodingStreamer) getOperatorState(ctx context.Context, metadatas []*di
 	if err != nil {
 		return nil, fmt.Errorf("error getting operator state at block number %d: %w", blockNumber, err)
 	}
+	fmt.Println("got index")
 	return state, nil
 }
 

@@ -62,6 +62,7 @@ type Config struct {
 
 	TargetNumChunks          uint
 	MaxBlobsToFetchFromStore int
+	BlockStaleMeasure        uint32
 }
 
 type Batcher struct {
@@ -107,6 +108,12 @@ func NewBatcher(
 		make(chan struct{}, 1),
 		uint64(config.BatchSizeMBLimit)*1024*1024, // convert to bytes
 	)
+
+	blockStaleMeasure, err := transactor.GetBlockStaleMeasure(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
 	streamerConfig := StreamerConfig{
 		SRSOrder:                 config.SRSOrder,
 		EncodingRequestTimeout:   config.PullInterval,
@@ -114,6 +121,7 @@ func NewBatcher(
 		TargetNumChunks:          config.TargetNumChunks,
 		MaxBlobsToFetchFromStore: config.MaxBlobsToFetchFromStore,
 		FinalizationBlockDelay:   config.FinalizationBlockDelay,
+		BlockStaleMeasure:        uint(blockStaleMeasure),
 	}
 	encodingWorkerPool := workerpool.New(config.NumConnections)
 	encodingStreamer, err := NewEncodingStreamer(streamerConfig, queue, chainState, encoderClient, assignmentCoordinator, batchTrigger, encodingWorkerPool, metrics.EncodingStreamerMetrics, logger)

@@ -82,6 +82,7 @@ func makeBatcher(t *testing.T) (*batcherComponents, *bat.Batcher, func() []time.
 	asgn := &core.StdAssignmentCoordinator{}
 	transactor := &coremock.MockTransactor{}
 	transactor.On("OperatorIDToAddress").Return(gethcommon.Address{}, nil)
+	transactor.On("GetBlockStaleMeasure").Return(uint32(300), nil)
 	agg, err := core.NewStdSignatureAggregator(logger, transactor)
 	assert.NoError(t, err)
 	p, err := makeTestProver()
@@ -217,6 +218,7 @@ func TestBatcherIterations(t *testing.T) {
 
 	txn := types.NewTransaction(0, gethcommon.Address{}, big.NewInt(0), 0, big.NewInt(0), nil)
 	components.transactor.On("BuildConfirmBatchTxn").Return(txn, nil)
+	components.transactor.On("GetBlockStaleMeasure").Return(uint32(300), nil)
 	components.txnManager.On("ProcessTransaction").Return(nil)
 
 	err = batcher.HandleSingleBatch(ctx)

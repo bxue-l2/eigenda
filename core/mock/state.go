@@ -210,8 +210,8 @@ func (d *ChainDataMock) GetOperatorStateByOperator(ctx context.Context, blockNum
 func (d *ChainDataMock) GetIndexedOperatorState(ctx context.Context, blockNumber uint, quorums []core.QuorumID) (*core.IndexedOperatorState, error) {
 
 	state := d.GetTotalOperatorStateWithQuorums(ctx, blockNumber, quorums)
-
-	return state.IndexedOperatorState, nil
+	args := d.Called()
+	return state.IndexedOperatorState, args.Error(0)
 
 }
 

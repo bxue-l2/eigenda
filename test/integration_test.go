@@ -134,6 +134,7 @@ func mustMakeDisperser(t *testing.T, cst core.IndexedChainState, store disperser
 
 	transactor := &coremock.MockTransactor{}
 	transactor.On("OperatorIDToAddress").Return(gethcommon.Address{}, nil)
+	transactor.On("GetBlockStaleMeasure").Return(uint32(300), nil)
 	agg, err := core.NewStdSignatureAggregator(logger, transactor)
 	assert.NoError(t, err)
 
@@ -189,6 +190,7 @@ func mustMakeDisperser(t *testing.T, cst core.IndexedChainState, store disperser
 	}
 	tx := &coremock.MockTransactor{}
 	tx.On("GetCurrentBlockNumber").Return(uint64(100), nil)
+	tx.On("GetBlockStaleMeasure").Return(uint32(300), nil)
 	tx.On("GetQuorumCount").Return(1, nil)
 	server := apiserver.NewDispersalServer(serverConfig, store, tx, logger, disperserMetrics, ratelimiter, rateConfig)
 
@@ -277,7 +279,7 @@ func mustMakeOperators(t *testing.T, cst *coremock.ChainDataMock, logger logging
 		tx.On("RegisterOperator").Return(nil)
 		tx.On("GetRegisteredQuorumIdsForOperator").Return(registeredQuorums, nil)
 		tx.On("UpdateOperatorSocket").Return(nil)
-		tx.On("GetBlockStaleMeasure").Return(nil)
+		tx.On("GetBlockStaleMeasure").Return(300, nil)
 		tx.On("GetStoreDurationBlocks").Return(nil)
 
 		mockOperatorSocketsFilterer := &coremock.MockOperatorSocketsFilterer{}

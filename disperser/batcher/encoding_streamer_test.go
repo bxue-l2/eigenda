@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ var (
 		EncodingQueueLimit:       100,
 		MaxBlobsToFetchFromStore: 10,
 		FinalizationBlockDelay:   75,
+		BlockStaleMeasure:        300,
 	}
 )
 
@@ -43,6 +45,7 @@ func createEncodingStreamer(t *testing.T, initialBlockNumber uint, batchThreshol
 	blobStore := inmem.NewBlobStore()
 	cst, err := coremock.MakeChainDataMock(numOperators)
 	assert.Nil(t, err)
+	cst.On("GetIndexedOperatorState").Return(nil)
 	p, err := makeTestProver()
 	assert.Nil(t, err)
 	encoderClient := disperser.NewLocalEncoderClient(p)
@@ -721,4 +724,86 @@ func TestGetBatch(t *testing.T) {
 	assert.Len(t, batch.BlobMetadata, 2)
 	assert.Contains(t, batch.BlobMetadata, metadata1)
 	assert.Contains(t, batch.BlobMetadata, metadata2)
+}
+
+/*
+func TestCachedIndexedOperatorStateWhenStale(t *testing.T) {
+	encodingStreamer, c := createEncodingStreamer(t, 10, 200_000, streamerConfig)
+
+	blob := makeTestBlob([]*core.SecurityParam{{
+		QuorumID:              0,
+		AdversaryThreshold:    80,
+		ConfirmationThreshold: 100,
+	}})
+	ctx := context.Background()
+	_, err := c.blobStore.StoreBlob(ctx, &blob, uint64(time.Now().UnixNano()))
+	assert.Nil(t, err)
+	out := make(chan batcher.EncodingResultOrStatus)
+
+	c.chainDataMock.On("GetIndexedOperatorState", tmock.Anything, tmock.Anything, tmock.Anything).Return(fmt.Errorf("GetIndexedOperatorState is not accessible"))
+
+	// reference block number is stale
+	_, err = c.blobStore.StoreBlob(ctx, &blob, uint64(time.Now().UnixNano()))
+	assert.Nil(t, err)
+	c.chainDataMock.On("GetCurrentBlockNumber").Return(uint(1000), nil)
+	err = encodingStreamer.RequestEncoding(context.Background(), out)
+	assert.NotNil(t, err)
+}
+*/
+
+func TestCachedIndexedOperatorState(t *testing.T) {
+	encodingStreamer, c := createEncodingStreamer(t, 10, 200_000, streamerConfig)
+	c.chainDataMock.On("GetIndexedOperatorState").Return(fmt.Errorf("GetIndexedOperatorState is not accessible"))
+
+	blob := makeTestBlob([]*core.SecurityParam{{
+		QuorumID:              0,
+		AdversaryThreshold:    80,
+		ConfirmationThreshold: 100,
+	}})
+	ctx := context.Background()
+	metadataKey, err := c.blobStore.StoreBlob(ctx, &blob, uint64(time.Now().UnixNano()))
+	assert.Nil(t, err)
+	metadata, err := c.blobStore.GetBlobMetadata(ctx, metadataKey)
+	assert.Nil(t, err)
+	assert.Equal(t, disperser.Processing, metadata.BlobStatus)
+
+	c.chainDataMock.On("GetCurrentBlockNumber").Return(uint(10)+encodingStreamer.FinalizationBlockDelay, nil)
+
+	out := make(chan batcher.EncodingResultOrStatus)
+	err = encodingStreamer.RequestEncoding(context.Background(), out)
+	assert.Nil(t, err)
+	isRequested := encodingStreamer.EncodedBlobstore.HasEncodingRequested(metadataKey, core.QuorumID(0), 10)
+	assert.True(t, isRequested)
+
+	count, size := encodingStreamer.EncodedBlobstore.GetEncodedResultSize()
+	assert.Equal(t, count, 0)
+	assert.Equal(t, size, uint64(0))
+
+	err = encodingStreamer.ProcessEncodedBlobs(context.Background(), <-out)
+	assert.Nil(t, err)
+	encodedResult, err := encodingStreamer.EncodedBlobstore.GetEncodingResult(metadataKey, core.QuorumID(0))
+	assert.Nil(t, err)
+	assert.NotNil(t, encodedResult)
+	assert.Equal(t, metadata, encodedResult.BlobMetadata)
+	assert.Equal(t, uint(10), encodedResult.ReferenceBlockNumber)
+	assert.Equal(t, &core.BlobQuorumInfo{
+		SecurityParam: core.SecurityParam{
+			QuorumID:              0,
+			AdversaryThreshold:    80,
+			ConfirmationThreshold: 100,
+		},
+		ChunkLength: 16,
+	}, encodedResult.BlobQuorumInfo)
+	assert.NotNil(t, encodedResult.Commitment)
+	assert.NotNil(t, encodedResult.Commitment.Commitment)
+	assert.NotNil(t, encodedResult.Commitment.LengthProof)
+	assert.Greater(t, encodedResult.Commitment.Length, uint(0))
+	assert.Len(t, encodedResult.Assignments, numOperators)
+	assert.Len(t, encodedResult.Chunks, 32)
+	isRequested = encodingStreamer.EncodedBlobstore.HasEncodingRequested(metadataKey, core.QuorumID(0), 10)
+	assert.True(t, isRequested)
+	count, size = encodingStreamer.EncodedBlobstore.GetEncodedResultSize()
+	assert.Equal(t, count, 1)
+	assert.Equal(t, size, uint64(131584))
+
 }

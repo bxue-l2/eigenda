@@ -20,7 +20,8 @@ var _ core.Transactor = (*MockTransactor)(nil)
 
 func (t *MockTransactor) GetBlockStaleMeasure(ctx context.Context) (uint32, error) {
 	args := t.Called()
-	return *new(uint32), args.Error(0)
+	result := args.Get(0)
+	return result.(uint32), args.Error(1)
 }
 
 func (t *MockTransactor) GetStoreDurationBlocks(ctx context.Context) (uint32, error) {
