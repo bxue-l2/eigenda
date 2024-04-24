@@ -1,4 +1,4 @@
-package prover
+package cpu
 
 import (
 	enc "github.com/Layr-Labs/eigenda/encoding"

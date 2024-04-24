@@ -1,4 +1,4 @@
-package rs_test
+package cpu_test
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/Layr-Labs/eigenda/encoding"
 	"github.com/Layr-Labs/eigenda/encoding/rs"
+	"github.com/Layr-Labs/eigenda/encoding/rs/cpu"
 )
 
 func TestEncodeDecode_InvertsWhenSamplingAllFrames(t *testing.T) {
@@ -17,7 +18,7 @@ func TestEncodeDecode_InvertsWhenSamplingAllFrames(t *testing.T) {
 
 	params := encoding.ParamsFromSysPar(numSys, numPar, uint64(len(GETTYSBURG_ADDRESS_BYTES)))
 
-	enc, _ := rs.NewEncoder(params, true)
+	enc, _ := cpu.NewEncoder(params, true)
 	require.NotNil(t, enc)
 
 	inputFr, err := rs.ToFrArray(GETTYSBURG_ADDRESS_BYTES)
@@ -40,7 +41,7 @@ func TestEncodeDecode_InvertsWhenSamplingMissingFrame(t *testing.T) {
 	defer teardownSuite(t)
 
 	params := encoding.ParamsFromSysPar(numSys, numPar, uint64(len(GETTYSBURG_ADDRESS_BYTES)))
-	enc, _ := rs.NewEncoder(params, true)
+	enc, _ := cpu.NewEncoder(params, true)
 	require.NotNil(t, enc)
 
 	inputFr, err := rs.ToFrArray(GETTYSBURG_ADDRESS_BYTES)
@@ -63,7 +64,7 @@ func TestEncodeDecode_ErrorsWhenNotEnoughSampledFrames(t *testing.T) {
 	defer teardownSuite(t)
 
 	params := encoding.ParamsFromSysPar(numSys, numPar, uint64(len(GETTYSBURG_ADDRESS_BYTES)))
-	enc, _ := rs.NewEncoder(params, true)
+	enc, _ := cpu.NewEncoder(params, true)
 	require.NotNil(t, enc)
 
 	fmt.Println("Num Chunks: ", enc.NumChunks)

@@ -14,6 +14,7 @@ import (
 	"github.com/Layr-Labs/eigenda/encoding/fft"
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
 	"github.com/Layr-Labs/eigenda/encoding/rs"
+	cpu_rs "github.com/Layr-Labs/eigenda/encoding/rs/cpu"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
@@ -112,7 +113,7 @@ type ParametrizedVerifier struct {
 	*kzg.KzgConfig
 	Srs *kzg.SRS
 
-	*rs.Encoder
+	*cpu_rs.Encoder
 
 	Fs *fft.FFTSettings
 	Ks *kzg.KZGSettings
@@ -159,7 +160,7 @@ func (g *Verifier) newKzgVerifier(params encoding.EncodingParams) (*Parametrized
 		return nil, err
 	}
 
-	encoder, err := rs.NewEncoder(params, g.Verbose)
+	encoder, err := cpu_rs.NewEncoder(params, g.Verbose)
 	if err != nil {
 		log.Println("Could not create encoder: ", err)
 		return nil, err

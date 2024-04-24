@@ -5,6 +5,7 @@ import (
 
 	"github.com/Layr-Labs/eigenda/encoding"
 	"github.com/Layr-Labs/eigenda/encoding/rs"
+	"github.com/Layr-Labs/eigenda/encoding/rs/cpu"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -14,7 +15,7 @@ func TestEncodeDecodeFrame_AreInverses(t *testing.T) {
 	defer teardownSuite(t)
 
 	params := encoding.ParamsFromSysPar(numSys, numPar, uint64(len(GETTYSBURG_ADDRESS_BYTES)))
-	enc, _ := rs.NewEncoder(params, true)
+	enc, _ := cpu.NewEncoder(params, true)
 	require.NotNil(t, enc)
 
 	_, frames, _, err := enc.EncodeBytes(GETTYSBURG_ADDRESS_BYTES)

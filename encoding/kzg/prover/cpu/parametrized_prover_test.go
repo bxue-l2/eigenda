@@ -1,4 +1,4 @@
-package prover_test
+package cpu_test
 
 import (
 	"fmt"
@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+
 
 func TestProveAllCosetThreads(t *testing.T) {
 

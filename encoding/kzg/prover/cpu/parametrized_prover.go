@@ -1,4 +1,4 @@
-package prover
+package cpu
 
 import (
 	"fmt"
@@ -11,6 +11,7 @@ import (
 	"github.com/Layr-Labs/eigenda/encoding/fft"
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
 	"github.com/Layr-Labs/eigenda/encoding/rs"
+	cpu_rs "github.com/Layr-Labs/eigenda/encoding/rs/cpu"
 	"github.com/Layr-Labs/eigenda/encoding/utils/toeplitz"
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
@@ -18,7 +19,7 @@ import (
 )
 
 type ParametrizedProver struct {
-	*rs.Encoder
+	*cpu_rs.Encoder
 
 	*kzg.KzgConfig
 	Srs        *kzg.SRS

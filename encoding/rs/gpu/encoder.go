@@ -1,4 +1,4 @@
-package rs
+package gpu
 
 import (
 	"math"
@@ -42,5 +42,4 @@ func NewEncoder(params encoding.EncodingParams, verbose bool) (*Encoder, error) 
 		verbose:        verbose,
 		NumRSWorker:    runtime.GOMAXPROCS(0),
 	}, nil
-
 }

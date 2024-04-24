@@ -1,4 +1,4 @@
-package rs
+package cpu
 
 import (
 	"errors"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Layr-Labs/eigenda/encoding"
+	"github.com/Layr-Labs/eigenda/encoding/rs"
 	rb "github.com/Layr-Labs/eigenda/encoding/utils/reverseBits"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
@@ -18,8 +19,8 @@ type GlobalPoly struct {
 }
 
 // just a wrapper to take bytes not Fr Element
-func (g *Encoder) EncodeBytes(inputBytes []byte) (*GlobalPoly, []Frame, []uint32, error) {
-	inputFr, err := ToFrArray(inputBytes)
+func (g *Encoder) EncodeBytes(inputBytes []byte) (*GlobalPoly, []rs.Frame, []uint32, error) {
+	inputFr, err := rs.ToFrArray(inputBytes)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("cannot convert bytes to field elements, %w", err)
 	}
@@ -33,7 +34,7 @@ func (g *Encoder) EncodeBytes(inputBytes []byte) (*GlobalPoly, []Frame, []uint32
 // frame, the multireveal interpolating coefficients are identical to the part of input bytes
 // in the form of field element. The extra returned integer list corresponds to which leading
 // coset root of unity, the frame is proving against, which can be deduced from a frame's index
-func (g *Encoder) Encode(inputFr []fr.Element) (*GlobalPoly, []Frame, []uint32, error) {
+func (g *Encoder) Encode(inputFr []fr.Element) (*GlobalPoly, []rs.Frame, []uint32, error) {
 	start := time.Now()
 	intermediate := time.Now()
 
@@ -70,7 +71,7 @@ func (g *Encoder) Encode(inputFr []fr.Element) (*GlobalPoly, []Frame, []uint32, 
 // Every frame is verifiable to the commitment.
 func (g *Encoder) MakeFrames(
 	polyEvals []fr.Element,
-) ([]Frame, []uint32, error) {
+) ([]rs.Frame, []uint32, error) {
 	// reverse dataFr making easier to sample points
 	err := rb.ReverseBitOrderFr(polyEvals)
 	if err != nil {
@@ -78,7 +79,7 @@ func (g *Encoder) MakeFrames(
 	}
 
 	indices := make([]uint32, 0)
-	frames := make([]Frame, g.NumChunks)
+	frames := make([]rs.Frame, g.NumChunks)
 
 	numWorker := uint64(g.NumRSWorker)
 
@@ -153,7 +154,7 @@ func (g *Encoder) interpolyWorker(
 	polyEvals []fr.Element,
 	jobChan <-chan JobRequest,
 	results chan<- error,
-	frames []Frame,
+	frames []rs.Frame,
 ) {
 
 	for jr := range jobChan {

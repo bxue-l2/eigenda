@@ -1,4 +1,4 @@
-package rs
+package cpu
 
 import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"

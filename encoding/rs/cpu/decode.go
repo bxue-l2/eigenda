@@ -1,9 +1,10 @@
-package rs
+package cpu
 
 import (
 	"errors"
 
 	"github.com/Layr-Labs/eigenda/encoding"
+	"github.com/Layr-Labs/eigenda/encoding/rs"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 )
@@ -17,7 +18,7 @@ import (
 // maxInputSize is the upper bound of the original data size. This is needed because
 // the frames and indices don't encode the length of the original data. If maxInputSize
 // is smaller than the original input size, decoded data will be trimmed to fit the maxInputSize.
-func (g *Encoder) Decode(frames []Frame, indices []uint64, maxInputSize uint64) ([]byte, error) {
+func (g *Encoder) Decode(frames []rs.Frame, indices []uint64, maxInputSize uint64) ([]byte, error) {
 	numSys := encoding.GetNumSys(maxInputSize, g.ChunkLength)
 
 	if uint64(len(frames)) < numSys {
@@ -28,7 +29,7 @@ func (g *Encoder) Decode(frames []Frame, indices []uint64, maxInputSize uint64) 
 	// copy evals based on frame coeffs into samples
 	for i, d := range indices {
 		f := frames[i]
-		e, err := GetLeadingCosetIndex(d, g.NumChunks)
+		e, err := rs.GetLeadingCosetIndex(d, g.NumChunks)
 		if err != nil {
 			return nil, err
 		}
@@ -42,7 +43,7 @@ func (g *Encoder) Decode(frames []Frame, indices []uint64, maxInputSize uint64) 
 		for j := uint64(0); j < g.ChunkLength; j++ {
 			p := j*g.NumChunks + uint64(e)
 			samples[p] = new(fr.Element)
-			
+
 			samples[p].Set(&evals[j])
 		}
 	}
@@ -73,7 +74,7 @@ func (g *Encoder) Decode(frames []Frame, indices []uint64, maxInputSize uint64) 
 		return nil, err
 	}
 
-	data := ToByteArray(reconstructedPoly, maxInputSize)
+	data := rs.ToByteArray(reconstructedPoly, maxInputSize)
 
 	return data, nil
 }

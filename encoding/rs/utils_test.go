@@ -8,6 +8,7 @@ import (
 
 	"github.com/Layr-Labs/eigenda/encoding"
 	"github.com/Layr-Labs/eigenda/encoding/rs"
+	"github.com/Layr-Labs/eigenda/encoding/rs/cpu"
 )
 
 func TestGetEncodingParams(t *testing.T) {
@@ -39,7 +40,7 @@ func TestToFrArrayAndToByteArray_AreInverses(t *testing.T) {
 	assert.Equal(t, numEle, uint64(32))
 
 	params := encoding.ParamsFromSysPar(numSys, numPar, uint64(len(GETTYSBURG_ADDRESS_BYTES)))
-	enc, _ := rs.NewEncoder(params, true)
+	enc, _ := cpu.NewEncoder(params, true)
 	require.NotNil(t, enc)
 
 	dataFr, err := rs.ToFrArray(GETTYSBURG_ADDRESS_BYTES)
