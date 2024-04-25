@@ -3,8 +3,8 @@ package gpu
 import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fp"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
-	"github.com/ingonyama-zk/icicle/wrappers/golang/core"
-	"github.com/ingonyama-zk/icicle/wrappers/golang/curves/bn254"
+	"github.com/ingonyama-zk/icicle/v2/wrappers/golang/core"
+	"github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254"
 )
 
 func ConvertFromFrToHostDeviceSlice(data []fr.Element) core.HostOrDeviceSlice {

@@ -17,7 +17,7 @@ require (
 	github.com/gin-contrib/logger v0.2.6
 	github.com/gin-gonic/gin v1.9.1
 	github.com/hashicorp/go-multierror v1.1.1
-	github.com/ingonyama-zk/icicle v1.10.1
+	github.com/ingonyama-zk/icicle/v2 v2.0.1
 	github.com/joho/godotenv v1.5.1
 	github.com/onsi/ginkgo/v2 v2.11.0
 	github.com/onsi/gomega v1.27.8
@@ -106,6 +106,7 @@ require (
 	github.com/hashicorp/go-bexpr v0.1.10 // indirect
 	github.com/holiman/billy v0.0.0-20240216141850-2abb0c79d3c4 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
+	github.com/ingonyama-zk/icicle v1.10.1 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect

@@ -13,9 +13,9 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/fft"
 
-	"github.com/ingonyama-zk/icicle/wrappers/golang/core"
-	"github.com/ingonyama-zk/icicle/wrappers/golang/curves/bn254"
-	icicle_bn254 "github.com/ingonyama-zk/icicle/wrappers/golang/curves/bn254"
+	"github.com/ingonyama-zk/icicle/v2/wrappers/golang/core"
+	icicle_bn254 "github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254"
+	"github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254/ntt"
 )
 
 type GlobalPoly struct {
@@ -144,7 +144,7 @@ func (g *Encoder) ExtendPolyEval(coeffs []fr.Element) ([]fr.Element, []fr.Elemen
 		pdCoeffs[i].SetZero()
 	}
 
-	cfg := icicle_bn254.GetDefaultNttConfig()
+	cfg := ntt.GetDefaultNttConfig()
 
 	exp := int(math.Ceil(math.Log2(float64(len(pdCoeffs)))))
 
@@ -154,13 +154,13 @@ func (g *Encoder) ExtendPolyEval(coeffs []fr.Element) ([]fr.Element, []fr.Elemen
 	limbs := core.ConvertUint64ArrToUint32Arr(rou[:])
 
 	rouIcicle.FromLimbs(limbs)
-	icicle_bn254.InitDomain(rouIcicle, cfg.Ctx, false)
+	ntt.InitDomain(rouIcicle, cfg.Ctx, false)
 
 	scalars := ConvertFromFrToHostDeviceSlice(pdCoeffs)
 
-	outputDevice := make(core.HostSlice[bn254.ScalarField], len(pdCoeffs))
+	outputDevice := make(core.HostSlice[icicle_bn254.ScalarField], len(pdCoeffs))
 
-	bn254.Ntt(scalars, core.KForward, &cfg, outputDevice)
+	ntt.Ntt(scalars, core.KForward, &cfg, outputDevice)
 
 	outputAsFr := ConvertScalarFieldsToFrBytes(outputDevice)
 
