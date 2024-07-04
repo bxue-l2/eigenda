@@ -14,6 +14,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/fft"
 
 	"github.com/ingonyama-zk/icicle/v2/wrappers/golang/core"
+	"github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254"
 	icicle_bn254 "github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254"
 	"github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254/ntt"
 )
@@ -86,43 +87,14 @@ func (g *Encoder) MakeFrames(
 	indices := make([]uint32, 0)
 	frames := make([]rs.Frame, g.NumChunks)
 
-	numWorker := uint64(g.NumRSWorker)
-
-	if numWorker > g.NumChunks {
-		numWorker = g.NumChunks
-	}
-
-	jobChan := make(chan JobRequest, numWorker)
-	results := make(chan error, numWorker)
-
-	for w := uint64(0); w < numWorker; w++ {
-		go g.interpolyWorker(
-			polyEvals,
-			jobChan,
-			results,
-			frames,
-		)
-	}
+	g.interpolyWorker(
+		polyEvals,
+		frames,
+	)
 
 	for i := uint64(0); i < g.NumChunks; i++ {
 		j := rb.ReverseBitsLimited(uint32(g.NumChunks), uint32(i))
-		jr := JobRequest{
-			Index: i,
-		}
-		jobChan <- jr
 		indices = append(indices, j)
-	}
-	close(jobChan)
-
-	for w := uint64(0); w < numWorker; w++ {
-		interPolyErr := <-results
-		if interPolyErr != nil {
-			err = interPolyErr
-		}
-	}
-
-	if err != nil {
-		return nil, nil, fmt.Errorf("proof worker error: %v", err)
 	}
 
 	return frames, indices, nil
@@ -167,37 +139,57 @@ func (g *Encoder) ExtendPolyEval(coeffs []fr.Element) ([]fr.Element, []fr.Elemen
 	return outputAsFr, pdCoeffs, nil
 }
 
-type JobRequest struct {
-	Index uint64
-}
-
 func (g *Encoder) interpolyWorker(
 	polyEvals []fr.Element,
-	jobChan <-chan JobRequest,
-	results chan<- error,
 	frames []rs.Frame,
 ) {
 
-	for jr := range jobChan {
-		i := jr.Index
-		j := rb.ReverseBitsLimited(uint32(g.NumChunks), uint32(i))
+	for i := uint64(0); i < uint64(len(frames)); i++ {
 		ys := polyEvals[g.ChunkLength*i : g.ChunkLength*(i+1)]
 		err := rb.ReverseBitOrderFr(ys)
 		if err != nil {
-			results <- err
 			continue
 		}
-		coeffs, err := g.GetInterpolationPolyCoeff(ys, uint32(j))
-		if err != nil {
-			results <- err
-			continue
-		}
-
-		frames[i].Coeffs = coeffs
 	}
 
-	results <- nil
+	batchSize := len(frames)
 
+	cfg := ntt.GetDefaultNttConfig()
+
+	cfg.BatchSize = int32(batchSize)
+
+	exp := int(math.Ceil(math.Log2(float64(g.NumEvaluations()))))
+	//fmt.Println("exp is", exp)
+	rouMont, _ := fft.Generator(uint64(1 << exp))
+	rou := rouMont.Bits()
+	rouIcicle := icicle_bn254.ScalarField{}
+
+	limbs := core.ConvertUint64ArrToUint32Arr(rou[:])
+
+	rouIcicle.FromLimbs(limbs)
+
+	ntt.InitDomain(rouIcicle, cfg.Ctx, false)
+
+	scalars := ConvertFromFrToHostDeviceSlice(polyEvals)
+
+	outputDevice := make(core.HostSlice[bn254.ScalarField], len(polyEvals))
+
+	ntt.Ntt(scalars, core.KInverse, &cfg, outputDevice)
+
+	outputAsFr := ConvertScalarFieldsToFrBytes(outputDevice)
+
+	mod := int32(len(g.Fs.ExpandedRootsOfUnity) - 1)
+
+	for i := uint64(0); i < uint64(len(frames)); i++ {
+		chunk := outputAsFr[i*g.ChunkLength : (i+1)*g.ChunkLength]
+		k := rb.ReverseBitsLimited(uint32(g.NumChunks), uint32(i))
+
+		for z := 0; z < len(chunk); z++ {
+			// We can lookup the inverse power by counting RootOfUnity backward
+			j := (-int32(k)*int32(z))%mod + mod
+			frames[i].Coeffs[z].Mul(&chunk[z], &g.Fs.ExpandedRootsOfUnity[j])
+		}
+	}
 }
 
 // Since both F W are invertible, c = W^-1 F^-1 d, convert it back. F W W^-1 F^-1 d = c
@@ -205,7 +197,6 @@ func (g *Encoder) GetInterpolationPolyCoeff(chunk []fr.Element, k uint32) ([]fr.
 	coeffs := make([]fr.Element, g.ChunkLength)
 	shiftedInterpolationPoly := make([]fr.Element, len(chunk))
 
-	// GPU
 	err := g.Fs.InplaceFFT(chunk, shiftedInterpolationPoly, true)
 	if err != nil {
 		return coeffs, err

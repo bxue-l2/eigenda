@@ -1,4 +1,4 @@
-package prover
+package cpu
 
 import (
 	"errors"
@@ -14,7 +14,7 @@ import (
 	"github.com/Layr-Labs/eigenda/encoding"
 	"github.com/Layr-Labs/eigenda/encoding/fft"
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
-	"github.com/Layr-Labs/eigenda/encoding/kzg/prover/cpu"
+	"github.com/Layr-Labs/eigenda/encoding/kzg/prover"
 	"github.com/Layr-Labs/eigenda/encoding/rs"
 	cpu_rs "github.com/Layr-Labs/eigenda/encoding/rs/cpu"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
@@ -29,7 +29,7 @@ type Prover struct {
 	mu           sync.Mutex
 	LoadG2Points bool
 
-	ParametrizedProvers map[encoding.EncodingParams]*cpu.ParametrizedProver
+	ParametrizedProvers map[encoding.EncodingParams]*ParametrizedProver
 }
 
 var _ encoding.Prover = &Prover{}
@@ -90,7 +90,7 @@ func NewProver(config *kzg.KzgConfig, loadG2Points bool) (*Prover, error) {
 		KzgConfig:           config,
 		Srs:                 srs,
 		G2Trailing:          g2Trailing,
-		ParametrizedProvers: make(map[encoding.EncodingParams]*cpu.ParametrizedProver),
+		ParametrizedProvers: make(map[encoding.EncodingParams]*ParametrizedProver),
 		LoadG2Points:        loadG2Points,
 	}
 
@@ -175,7 +175,7 @@ func (e *Prover) EncodeAndProve(data []byte, params encoding.EncodingParams) (en
 	return commitments, chunks, nil
 }
 
-func (g *Prover) GetKzgEncoder(params encoding.EncodingParams) (*cpu.ParametrizedProver, error) {
+func (g *Prover) GetKzgEncoder(params encoding.EncodingParams) (*ParametrizedProver, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	enc, ok := g.ParametrizedProvers[params]
@@ -191,7 +191,7 @@ func (g *Prover) GetKzgEncoder(params encoding.EncodingParams) (*cpu.Parametrize
 	return enc, err
 }
 
-func (g *Prover) newProver(params encoding.EncodingParams) (*cpu.ParametrizedProver, error) {
+func (g *Prover) newProver(params encoding.EncodingParams) (*ParametrizedProver, error) {
 
 	// Check that the parameters are valid with respect to the SRS.
 	if params.ChunkLength*params.NumChunks >= g.SRSOrder {
@@ -204,7 +204,7 @@ func (g *Prover) newProver(params encoding.EncodingParams) (*cpu.ParametrizedPro
 		return nil, err
 	}
 
-	subTable, err := NewSRSTable(g.CacheDir, g.Srs.G1, g.NumWorker)
+	subTable, err := prover.NewSRSTable(g.CacheDir, g.Srs.G1, g.NumWorker)
 	if err != nil {
 		log.Println("Could not create srs table:", err)
 		return nil, err
@@ -238,7 +238,7 @@ func (g *Prover) newProver(params encoding.EncodingParams) (*cpu.ParametrizedPro
 	t := uint8(math.Log2(float64(2 * encoder.NumChunks)))
 	sfs := fft.NewFFTSettings(t)
 
-	return &cpu.ParametrizedProver{
+	return &ParametrizedProver{
 		Encoder:    encoder,
 		KzgConfig:  g.KzgConfig,
 		Srs:        g.Srs,

@@ -10,7 +10,7 @@ import (
 
 	"github.com/Layr-Labs/eigenda/encoding"
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
-	"github.com/Layr-Labs/eigenda/encoding/kzg/prover"
+	"github.com/Layr-Labs/eigenda/encoding/kzg/prover/cpu"
 	"github.com/Layr-Labs/eigenda/encoding/kzg/verifier"
 	"github.com/Layr-Labs/eigenda/encoding/utils/codec"
 
@@ -73,7 +73,7 @@ func sampleFrames(frames []encoding.Frame, num uint64) ([]encoding.Frame, []uint
 
 func TestEncoder(t *testing.T) {
 
-	p, _ := prover.NewProver(kzgConfig, true)
+	p, _ := cpu.NewProver(kzgConfig, true)
 	v, _ := verifier.NewVerifier(kzgConfig, true)
 
 	params := encoding.ParamsFromMins(5, 5)
@@ -119,7 +119,7 @@ func TestEncoder(t *testing.T) {
 // BenchmarkEncode-12    	       1	2421900583 ns/op
 func BenchmarkEncode(b *testing.B) {
 
-	p, _ := prover.NewProver(kzgConfig, true)
+	p, _ := cpu.NewProver(kzgConfig, true)
 
 	params := encoding.EncodingParams{
 		ChunkLength: 512,

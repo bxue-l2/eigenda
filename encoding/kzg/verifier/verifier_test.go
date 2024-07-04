@@ -10,7 +10,7 @@ import (
 
 	"github.com/Layr-Labs/eigenda/encoding"
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
-	"github.com/Layr-Labs/eigenda/encoding/kzg/prover"
+	"github.com/Layr-Labs/eigenda/encoding/kzg/prover/cpu"
 	"github.com/Layr-Labs/eigenda/encoding/kzg/verifier"
 	"github.com/Layr-Labs/eigenda/encoding/utils/codec"
 	"github.com/stretchr/testify/assert"
@@ -60,7 +60,7 @@ func teardown() {
 func TestBenchmarkVerifyChunks(t *testing.T) {
 	t.Skip("This test is meant to be run manually, not as part of the test suite")
 
-	p, _ := prover.NewProver(kzgConfig, true)
+	p, _ := cpu.NewProver(kzgConfig, true)
 	v, _ := verifier.NewVerifier(kzgConfig, true)
 
 	chunkLengths := []uint64{64, 128, 256, 512, 1024, 2048, 4096, 8192}
@@ -113,7 +113,7 @@ func TestBenchmarkVerifyChunks(t *testing.T) {
 
 func BenchmarkVerifyBlob(b *testing.B) {
 
-	p, _ := prover.NewProver(kzgConfig, true)
+	p, _ := cpu.NewProver(kzgConfig, true)
 	v, _ := verifier.NewVerifier(kzgConfig, true)
 
 	params := encoding.EncodingParams{

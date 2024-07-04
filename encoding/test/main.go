@@ -10,10 +10,10 @@ import (
 
 	"github.com/Layr-Labs/eigenda/encoding"
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
-	"github.com/Layr-Labs/eigenda/encoding/kzg/prover"
+	"github.com/Layr-Labs/eigenda/encoding/kzg/prover/cpu"
+	"github.com/Layr-Labs/eigenda/encoding/kzg/prover/gpu"
 	"github.com/Layr-Labs/eigenda/encoding/kzg/verifier"
 	"github.com/Layr-Labs/eigenda/encoding/rs"
-
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 )
 
@@ -23,7 +23,19 @@ func main() {
 	//if err != nil {
 	//	log.Println("WriteGeneratorPoints failed:", err)
 	//}
-	readpoints()
+	/*
+		_,_,a,b := bn254.Generators()
+		fmt.Println(a.String(),a)
+		fmt.Println(a.Y.Bits())
+		fmt.Println(a.Y.Bytes())
+		fmt.Println(b.Y.A0.Bits())
+		fmt.Println(b.Y.A1.Bits())
+		fmt.Println(b.Y.A0.Bytes())
+		fmt.Println(b.Y.A1.Bytes())
+	*/
+
+	//readpoints()
+	TestGPUKzgRs()
 }
 
 func readpoints() {
@@ -37,7 +49,7 @@ func readpoints() {
 	}
 
 	// create encoding object
-	kzgGroup, _ := prover.NewProver(kzgConfig, true)
+	kzgGroup, _ := cpu.NewProver(kzgConfig, true)
 	fmt.Println("there are ", len(kzgGroup.Srs.G1), "points")
 	for i := 0; i < len(kzgGroup.Srs.G1); i++ {
 
@@ -46,6 +58,90 @@ func readpoints() {
 	if kzgGroup.Srs.G1[0].X == kzg.GenG1.X && kzgGroup.Srs.G1[0].Y == kzg.GenG1.Y {
 		fmt.Println("start with gen")
 	}
+}
+
+func TestGPUKzgRs() {
+	numSymbols := 4 // 32768
+	// encode parameters
+	numNode := uint64(4) // 4096
+	numSys := uint64(2)  // 512
+	numPar := numNode - numSys
+	// Prepare data
+	fmt.Printf("* Task Starts\n")
+	fmt.Printf("    Num Sys: %v\n", numSys)
+	fmt.Printf("    Num Par: %v\n", numPar)
+	//fmt.Printf("    Data size(byte): %v\n", len(inputBytes))
+
+	kzgConfig := &kzg.KzgConfig{
+		G1Path:          "../../inabox/resources/kzg/g1.point.300000",
+		G2Path:          "../../inabox/resources/kzg/g2.point.300000",
+		CacheDir:        "../../inabox/resources/kzg/SRSTables",
+		SRSOrder:        3000,
+		SRSNumberToLoad: 3000,
+		NumWorker:       uint64(runtime.GOMAXPROCS(0)),
+	}
+
+	// create encoding object
+	p, _ := gpu.NewProver(kzgConfig, true)
+
+	params := encoding.EncodingParams{NumChunks: numNode, ChunkLength: uint64(numSymbols) / uint64(numSys)}
+	enc, err := p.GetKzgEncoder(params)
+	if err != nil {
+		fmt.Println("error GetKzgEncoder", err)
+	}
+
+	//inputFr := kzg.ToFrArray(inputBytes)
+	inputSize := uint64(numSymbols)
+	inputFr := make([]fr.Element, inputSize)
+	for i := uint64(0); i < inputSize; i++ {
+		inputFr[i].SetInt64(int64(i + 1))
+	}
+
+	fmt.Printf("Input \n")
+	//printFr(inputFr)
+
+	encodeStart := time.Now()
+	//inputSize := uint64(len(inputFr))
+	commit, legnthCommit, legnthProof, frames, fIndices, err := enc.Encode(inputFr)
+	_ = legnthProof
+	_ = legnthCommit
+	_ = commit
+	_ = frames
+	_ = fIndices
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Encode takes", time.Since(encodeStart))
+
+	startVerify := time.Now()
+
+	for i := 0; i < len(frames); i++ {
+		//for i, f := range frames {
+		f := frames[i]
+		j := fIndices[i]
+		q, err := rs.GetLeadingCosetIndex(uint64(i), numSys+numPar)
+		if err != nil {
+			log.Fatalf("%v", err)
+		}
+
+		if j != q {
+			log.Fatal("leading coset inconsistency")
+		}
+
+		//fmt.Printf("frame %v leading coset %v\n", i, j)
+		lc := enc.Fs.ExpandedRootsOfUnity[uint64(j)]
+
+		g2Atn, err := kzg.ReadG2Point(uint64(len(f.Coeffs)), kzgConfig)
+		if err != nil {
+			log.Fatalf("Load g2 %v failed\n", err)
+		}
+		err = verifier.VerifyFrame(&f, enc.Ks, commit, &lc, &g2Atn)
+		if err != nil {
+			log.Fatalf("Proof %v failed\n", i)
+		}
+	}
+	fmt.Printf("* Verify %v frames -> all correct. together using %v\n",
+		len(frames), time.Since(startVerify))
 }
 
 func TestKzgRs() {
@@ -70,7 +166,7 @@ func TestKzgRs() {
 	}
 
 	// create encoding object
-	p, _ := prover.NewProver(kzgConfig, true)
+	p, _ := cpu.NewProver(kzgConfig, true)
 
 	params := encoding.EncodingParams{NumChunks: 200, ChunkLength: 180}
 	enc, _ := p.GetKzgEncoder(params)

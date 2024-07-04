@@ -68,6 +68,7 @@ func (t *Toeplitz) GetFFTCoeff() ([]fr.Element, error) {
 	return cir.GetFFTCoeff()
 }
 
+
 func (t *Toeplitz) GetCoeff() ([]fr.Element, error) {
 	cv := t.ExtendCircularVec()
 

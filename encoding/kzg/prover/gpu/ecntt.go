@@ -1,0 +1,97 @@
+package gpu
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/consensys/gnark-crypto/ecc/bn254"
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/fft"
+	icicle_bn254 "github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254"
+	ecntt "github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254/ecntt"
+	icicle_bn254_ntt "github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254/ntt"
+
+	"github.com/ingonyama-zk/icicle/v2/wrappers/golang/core"
+)
+
+func ECNtt(batchPoints [][]bn254.G1Affine, isInverse bool) ([][]bn254.G1Affine, error) {
+	cfg := icicle_bn254_ntt.GetDefaultNttConfig()
+
+	cfg.Ordering = core.KNN
+	cfg.NttAlgorithm = core.Auto
+
+	numSymbol := len(batchPoints[0])
+
+	cfg.BatchSize = int32(len(batchPoints))
+
+	exp := int32(20) //int32(math.Ceil(math.Log2(float64(numSymbol))))
+
+	fmt.Println("cfg.BatchSize", cfg.BatchSize, "exp", exp)
+
+	rouMont, _ := fft.Generator(uint64(1 << 20))
+	rou := rouMont.Bits()
+	rouIcicle := icicle_bn254.ScalarField{}
+
+	limbs := core.ConvertUint64ArrToUint32Arr(rou[:])
+
+	rouIcicle.FromLimbs(limbs)
+	fmt.Println("rouIcicle", rouIcicle)
+
+	initDomainStart := time.Now()
+	icicle_bn254_ntt.InitDomain(rouIcicle, cfg.Ctx, false)
+	fmt.Println("init domain takes", time.Since(initDomainStart))
+
+	pointsIcileProjective := make([]icicle_bn254.Projective, 0)
+
+	for i := 0; i < int(cfg.BatchSize); i++ {
+		projs := BatchConvertGnarkAffineToIcicleProjective(batchPoints[i])
+
+		pointsIcileProjective = append(pointsIcileProjective, projs...)
+		/*
+			for z := 0; z < len(projs); z++ {
+				aff := ProjectiveToGnarkAffine(projs[z])
+				fmt.Println("aff", aff.String())
+			}
+		*/
+	}
+
+	totalNumSym := cfg.BatchSize * int32(numSymbol)
+
+	copyStart := time.Now()
+	pointsCopy := core.HostSliceFromElements[icicle_bn254.Projective](pointsIcileProjective)
+	fmt.Println("copy takes", time.Since(copyStart))
+
+	output := make(core.HostSlice[icicle_bn254.Projective], int(totalNumSym))
+	fmt.Println("totalNumSym", totalNumSym)
+
+	//var output core.DeviceSlice
+	//output.Malloc(p.Size()*int(totalNumSym), p.Size())
+
+	start := time.Now()
+
+	if isInverse {
+		e := ecntt.ECNtt(pointsCopy, core.KInverse, &cfg, output)
+		fmt.Println("IcicleErrorCode", e.IcicleErrorCode)
+	} else {
+		e := ecntt.ECNtt(pointsCopy, core.KForward, &cfg, output)
+		fmt.Println("IcicleErrorCode", e.IcicleErrorCode)
+	}
+
+	fmt.Println("ecntt time", time.Since(start))
+
+	gpuFFTBatch := make([][]bn254.G1Affine, int(cfg.BatchSize))
+
+	for j := 0; j < int(cfg.BatchSize); j++ {
+		gpuFFTPoints := make([]bn254.G1Affine, numSymbol)
+		for i := 0; i < int(numSymbol); i++ {
+			gpuFFTPoints[i] = ProjectiveToGnarkAffine(output[i+j*numSymbol])
+
+		}
+		gpuFFTBatch[j] = gpuFFTPoints
+		//for k := 0; k < len(gpuFFTPoints); k++ {
+		//	fmt.Println("k", k, gpuFFTPoints[k].String())
+		//}
+
+	}
+
+	return gpuFFTBatch, nil
+}

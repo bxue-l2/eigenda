@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/Layr-Labs/eigenda/encoding"
-	"github.com/Layr-Labs/eigenda/encoding/kzg/prover"
+	"github.com/Layr-Labs/eigenda/encoding/kzg/prover/cpu"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -13,7 +13,7 @@ func FuzzOnlySystematic(f *testing.F) {
 	f.Add(gettysburgAddressBytes)
 	f.Fuzz(func(t *testing.T, input []byte) {
 
-		group, _ := prover.NewProver(kzgConfig, true)
+		group, _ := cpu.NewProver(kzgConfig, true)
 
 		params := encoding.ParamsFromSysPar(10, 3, uint64(len(input)))
 		enc, err := group.GetKzgEncoder(params)

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/Layr-Labs/eigenda/encoding"
-	"github.com/Layr-Labs/eigenda/encoding/kzg/prover"
+	"github.com/Layr-Labs/eigenda/encoding/kzg/prover/cpu"
 	"github.com/Layr-Labs/eigenda/encoding/kzg/verifier"
 	"github.com/Layr-Labs/eigenda/encoding/rs"
 	"github.com/stretchr/testify/assert"
@@ -13,7 +13,7 @@ import (
 
 func TestUniversalVerify(t *testing.T) {
 
-	group, _ := prover.NewProver(kzgConfig, true)
+	group, _ := cpu.NewProver(kzgConfig, true)
 	v, _ := verifier.NewVerifier(kzgConfig, true)
 
 	params := encoding.ParamsFromSysPar(numSys, numPar, uint64(len(gettysburgAddressBytes)))
@@ -56,7 +56,7 @@ func TestUniversalVerify(t *testing.T) {
 func TestUniversalVerifyWithPowerOf2G2(t *testing.T) {
 
 	kzgConfigCopy := *kzgConfig
-	group, err := prover.NewProver(&kzgConfigCopy, true)
+	group, err := cpu.NewProver(&kzgConfigCopy, true)
 	assert.NoError(t, err)
 	group.KzgConfig.G2Path = ""
 

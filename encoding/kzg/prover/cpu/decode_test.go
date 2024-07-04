@@ -4,14 +4,14 @@ import (
 	"testing"
 
 	"github.com/Layr-Labs/eigenda/encoding"
-	"github.com/Layr-Labs/eigenda/encoding/kzg/prover"
+	"github.com/Layr-Labs/eigenda/encoding/kzg/prover/cpu"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestEncodeDecodeFrame_AreInverses(t *testing.T) {
 
-	group, _ := prover.NewProver(kzgConfig, true)
+	group, _ := cpu.NewProver(kzgConfig, true)
 
 	params := encoding.ParamsFromSysPar(numSys, numPar, uint64(len(gettysburgAddressBytes)))
 
