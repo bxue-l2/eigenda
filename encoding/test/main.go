@@ -61,10 +61,10 @@ func readpoints() {
 }
 
 func TestGPUKzgRs() {
-	numSymbols := 4 // 32768
+	numSymbols := 32768 //32768
 	// encode parameters
-	numNode := uint64(4) // 4096
-	numSys := uint64(2)  // 512
+	numNode := uint64(4096) // 4096
+	numSys := uint64(512)   // 512
 	numPar := numNode - numSys
 	// Prepare data
 	fmt.Printf("* Task Starts\n")
@@ -76,8 +76,8 @@ func TestGPUKzgRs() {
 		G1Path:          "../../inabox/resources/kzg/g1.point.300000",
 		G2Path:          "../../inabox/resources/kzg/g2.point.300000",
 		CacheDir:        "../../inabox/resources/kzg/SRSTables",
-		SRSOrder:        3000,
-		SRSNumberToLoad: 3000,
+		SRSOrder:        300000, // must be power of 2 to support precompute 262144
+		SRSNumberToLoad: 300000,
 		NumWorker:       uint64(runtime.GOMAXPROCS(0)),
 	}
 

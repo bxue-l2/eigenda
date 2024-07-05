@@ -18,16 +18,20 @@ import (
 	"github.com/Layr-Labs/eigenda/encoding/rs"
 	cpu_rs "github.com/Layr-Labs/eigenda/encoding/rs/cpu"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
+	"github.com/ingonyama-zk/icicle/v2/wrappers/golang/core"
 
 	_ "go.uber.org/automaxprocs"
 )
 
 type Prover struct {
 	*kzg.KzgConfig
-	Srs          *kzg.SRS
-	G2Trailing   []bn254.G2Affine
-	mu           sync.Mutex
-	LoadG2Points bool
+	Srs              *kzg.SRS
+	G2Trailing       []bn254.G2Affine
+	mu               sync.Mutex
+	LoadG2Points     bool
+	PrecomputedSRSG1 core.DeviceSlice
+	MsmConfig        core.MSMConfig
+	// add G2 later
 
 	ParametrizedProvers map[encoding.EncodingParams]*ParametrizedProver
 }
@@ -83,6 +87,28 @@ func NewProver(config *kzg.KzgConfig, loadG2Points bool) (*Prover, error) {
 		log.Println("Could not create srs", err)
 		return nil, err
 	}
+
+	/*
+		var precomputedSRSG1 core.DeviceSlice
+		msmCfg := icicle_bn254_msm.GetDefaultMSMConfig()
+		size := len(s1)
+
+		rowsG1Icicle := BatchConvertGnarkAffineToIcicleAffine(s1)
+		precomputeFactor := int32(8)
+		msmCfg.PrecomputeFactor = precomputeFactor
+
+		rowsG1IcicleCopy := core.HostSliceFromElements[icicle_bn254.Affine](rowsG1Icicle)
+
+		_, cudeErr := precomputedSRSG1.Malloc(rowsG1Icicle[0].Size()*size*int(precomputeFactor), rowsG1Icicle[0].Size())
+		if cudeErr != cr.CudaSuccess {
+			return nil, fmt.Errorf("cuda malloc error")
+		}
+
+		cudeErr = msm.PrecomputePoints(rowsG1IcicleCopy, size, &msmCfg, precomputedSRSG1)
+		if cudeErr != cr.CudaSuccess {
+			return nil, fmt.Errorf("cuda precompute points error")
+		}
+	*/
 
 	fmt.Println("numthread", runtime.GOMAXPROCS(0))
 
@@ -239,14 +265,16 @@ func (g *Prover) newProver(params encoding.EncodingParams) (*ParametrizedProver,
 	sfs := fft.NewFFTSettings(t)
 
 	return &ParametrizedProver{
-		Encoder:    encoder,
-		KzgConfig:  g.KzgConfig,
-		Srs:        g.Srs,
-		G2Trailing: g.G2Trailing,
-		Fs:         fs,
-		Ks:         ks,
-		SFs:        sfs,
-		FFTPointsT: fftPointsT,
+		Encoder:          encoder,
+		KzgConfig:        g.KzgConfig,
+		Srs:              g.Srs,
+		G2Trailing:       g.G2Trailing,
+		Fs:               fs,
+		Ks:               ks,
+		SFs:              sfs,
+		FFTPointsT:       fftPointsT,
+		PrecomputedSRSG1: g.PrecomputedSRSG1,
+		MsmCfg:           g.MsmConfig,
 	}, nil
 }
 

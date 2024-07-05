@@ -51,9 +51,7 @@ func (g *Encoder) Encode(inputFr []fr.Element) (*GlobalPoly, []rs.Frame, []uint3
 		Coeffs: polyCoeffs,
 	}
 
-	if g.verbose {
-		log.Printf("    Extending evaluation takes  %v\n", time.Since(intermediate))
-	}
+	log.Printf("    Extending evaluation takes  %v\n", time.Since(intermediate))
 
 	// create frames to group relevant info
 	frames, indices, err := g.MakeFrames(polyEvals)

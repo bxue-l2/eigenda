@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/Layr-Labs/eigenda/encoding"
+	"github.com/ingonyama-zk/icicle/v2/wrappers/golang/core"
+	bn254_icicle "github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254"
 
 	"github.com/Layr-Labs/eigenda/encoding/fft"
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
@@ -25,11 +27,14 @@ type ParametrizedProver struct {
 	Srs        *kzg.SRS
 	G2Trailing []bn254.G2Affine
 
-	Fs         *fft.FFTSettings
-	Ks         *kzg.KZGSettings
-	SFs        *fft.FFTSettings   // fft used for submatrix product helper
-	FFTPointsT [][]bn254.G1Affine // transpose of FFTPoints
+	Fs               *fft.FFTSettings
+	Ks               *kzg.KZGSettings
+	SFs              *fft.FFTSettings   // fft used for submatrix product helper
+	FFTPointsT       [][]bn254.G1Affine // transpose of FFTPoints
+	PrecomputedSRSG1 core.DeviceSlice
+	MsmCfg           core.MSMConfig
 
+	cfg core.NTTConfig[[bn254_icicle.SCALAR_LIMBS]uint32]
 }
 
 type WorkerResult struct {
@@ -103,7 +108,16 @@ func (g *ParametrizedProver) Encode(inputFr []fr.Element) (*bn254.G1Affine, *bn2
 	paddedCoeffs := make([]fr.Element, g.NumEvaluations())
 	copy(paddedCoeffs, poly.Coeffs)
 
-	proofs, err := g.ProveAllCosetThreads(paddedCoeffs, g.NumChunks, g.ChunkLength, g.NumWorker)
+	inputFrBatch := make([][]fr.Element, 10)
+	for i := 0; i < len(inputFrBatch); i++ {
+		inputFrBatch[i] = paddedCoeffs
+	}
+
+	proofsBatched, err := g.ProveBatchedCoset(inputFrBatch, g.NumChunks, g.ChunkLength, g.NumWorker)
+	proofs := proofsBatched[0]
+	//proofs, err := g.ProveAllCosetThreads(paddedCoeffs, g.NumChunks, g.ChunkLength, g.NumWorker)
+	//proofs, err := g.ProveAllCosetThreadsPipeline(paddedCoeffs, g.NumChunks, g.ChunkLength, g.NumWorker)
+
 	if err != nil {
 		return nil, nil, nil, nil, nil, fmt.Errorf("could not generate proofs: %v", err)
 	}
@@ -131,26 +145,65 @@ func (g *ParametrizedProver) Commit(polyFr []fr.Element) (bn254.G1Affine, error)
 	return *commit, err
 }
 
+// assume numChunk, numLen are identical
+func (p *ParametrizedProver) ProveBatchedCoset(polyFrList [][]fr.Element, numChunks, chunkLen, numWorker uint64) ([][]bn254.G1Affine, error) {
+	start := time.Now()
+	numPoly := len(polyFrList)
+	flatPolyFr := make([]fr.Element, 0, numPoly*len(polyFrList[0]))
+	for i := 0; i < numPoly; i++ {
+		flatPolyFr = append(flatPolyFr, polyFrList[i]...)
+	}
+	/*
+		fmt.Println("flatPolyFr")
+		for i := 0; i < len(flatPolyFr); i++ {
+			fmt.Printf("%v ", flatPolyFr[i].String())
+		}
+		fmt.Println()
+	*/
+	flatProofsBatch, err := p.ProveAllCosetThreads(flatPolyFr, numChunks, chunkLen, numWorker)
+	if err != nil {
+		return nil, err
+	}
+
+	proofsBatch := make([][]bn254.G1Affine, numPoly)
+	for i := uint64(0); i < uint64(numPoly); i++ {
+		proofsBatch[i] = flatProofsBatch[i*numChunks : (i+1)*numChunks]
+		//for j := 0; j < len(proofsBatch[i]); j++ {
+		//	fmt.Printf("%v ", proofsBatch[i][j].String())
+		//}
+		//fmt.Println()
+	}
+	fmt.Println("prove batch takes", time.Since(start))
+	return proofsBatch, nil
+}
+
 func (p *ParametrizedProver) ProveAllCosetThreads(polyFr []fr.Element, numChunks, chunkLen, numWorker uint64) ([]bn254.G1Affine, error) {
-	begin := time.Now()
+
 	// Robert: Standardizing this to use the same math used in precomputeSRS
 	dimE := numChunks
 	l := chunkLen
+	numPoly := uint64(len(polyFr)) / dimE / chunkLen
+	fmt.Println("numPoly", numPoly)
 
+	p.cfg = p.setupNTT(int(dimE*2), int(l*numPoly))
+
+	begin := time.Now()
 	jobChan := make(chan uint64, numWorker)
 	results := make(chan WorkerResult, numWorker)
 
 	// create storage for intermediate fft outputs
-	coeffStore := make([][]fr.Element, l) //dimE*2
+	coeffStore := make([][]fr.Element, l*numPoly)
 	for i := range coeffStore {
 		coeffStore[i] = make([]fr.Element, dimE*2)
 	}
+
+	fmt.Println("len(polyFr)", len(polyFr))
 
 	for w := uint64(0); w < numWorker; w++ {
 		go p.proofWorkerGPU(polyFr, jobChan, l, dimE, coeffStore, results)
 	}
 
-	for j := uint64(0); j < l; j++ {
+	for j := uint64(0); j < l*numPoly; j++ {
 		jobChan <- j
 	}
 	close(jobChan)
@@ -163,28 +216,58 @@ func (p *ParametrizedProver) ProveAllCosetThreads(polyFr []fr.Element, numChunks
 			err = wr.err
 		}
 	}
+	t_prepare := time.Now()
 
 	if err != nil {
 		return nil, fmt.Errorf("proof worker error: %v", err)
 	}
+
+	/*
+		fmt.Println("coeffStore")
+		for i := 0; i < len(coeffStore); i++ {
+			a := coeffStore[i]
+			for j := 0; j < len(a); j++ {
+				fmt.Printf("%v ", a[j].String())
+			}
+			fmt.Println()
+		}
+	*/
+
 	fmt.Println("NTT")
-	coeffStoreFFT, e := NTT(coeffStore)
+	coeffStoreFFT, e := p.NTT(coeffStore)
 	if e != nil {
 		return nil, e
 	}
 
 	// transpose it
-	coeffStoreFFTT := make([][]fr.Element, dimE*2)
+
+	coeffStoreFFTT := make([][]fr.Element, dimE*2*numPoly)
 	for i := range coeffStoreFFTT {
 		coeffStoreFFTT[i] = make([]fr.Element, l)
 	}
 
-	for i := 0; i < len(coeffStore); i++ {
-		vec := coeffStoreFFT[i]
-		for j := 0; j < len(vec); j++ {
-			coeffStoreFFTT[j][i] = vec[j]
+	t_ntt := time.Now()
+
+	for k := uint64(0); k < numPoly; k++ {
+		step := int(k * dimE * 2)
+		for i := 0; i < int(l); i++ {
+			vec := coeffStoreFFT[i+int(k*l)]
+			for j := 0; j < int(dimE*2); j++ {
+				coeffStoreFFTT[j+step][i] = vec[j]
+			}
 		}
 	}
+
+	/*
+		fmt.Println("Transposed FFT")
+		for i := 0; i < len(coeffStore); i++ {
+			vec := coeffStoreFFT[i]
+			for j := 0; j < len(vec); j++ {
+				fmt.Printf("%v ", vec[j].String())
+			}
+			fmt.Println()
+		}
+	*/
 
 	t0 := time.Now()
 	fmt.Println("MsmBatch")
@@ -195,32 +278,36 @@ func (p *ParametrizedProver) ProveAllCosetThreads(polyFr []fr.Element, numChunks
 
 	t1 := time.Now()
 
-	batch := make([][]bn254.G1Affine, 1)
-	batch[0] = sumVec
 	fmt.Println("ECNTT inverse")
-	sumVecInvBatch, err := ECNtt(batch, true)
+	sumVecInv, err := ECNtt(sumVec, true, int(numPoly))
 	if err != nil {
 		return nil, err
 	}
-	sumVecInv := sumVecInvBatch[0]
 
 	t2 := time.Now()
 
-	batchInv := make([][]bn254.G1Affine, 1)
+	// remove half points per poly
+	batchInv := make([]bn254.G1Affine, len(sumVecInv)/2)
 	// outputs is out of order - buttefly
-	batchInv[0] = sumVecInv[:dimE]
+	k := 0
+	for i := 0; i < int(numPoly); i++ {
+		for j := 0; j < int(dimE); j++ {
+			batchInv[k] = sumVecInv[i*int(dimE)*2+j]
+			k += 1
+		}
+	}
 	fmt.Println("ECNTT last")
-	proofss, err := ECNtt(batchInv, false)
+	flatProofsBatch, err := ECNtt(batchInv, false, int(numPoly))
 	if err != nil {
 		return nil, fmt.Errorf("second ECNtt error: %w", err)
 	}
-	proofs := proofss[0]
 
 	t3 := time.Now()
 
+	fmt.Printf("prepare %v, ntt %v,\n", t_prepare.Sub(begin), t_ntt.Sub(t_prepare))
 	fmt.Printf("total %v mult-th %v, msm %v,fft1 %v, fft2 %v,\n", t3.Sub(begin), t0.Sub(begin), t1.Sub(t0), t2.Sub(t1), t3.Sub(t2))
 
-	return proofs, nil
+	return flatProofsBatch, nil
 }
 
 func (p *ParametrizedProver) proofWorker(
@@ -284,6 +371,7 @@ func (p *ParametrizedProver) proofWorkerGPU(
 func (p *ParametrizedProver) GetSlicesCoeff(polyFr []fr.Element, dimE, j, l uint64) ([]fr.Element, error) {
 	// there is a constant term
 	m := uint64(len(polyFr)) - 1
+
 	dim := (m - j) / l
 
 	toeV := make([]fr.Element, 2*dimE-1)
@@ -307,13 +395,18 @@ func (p *ParametrizedProver) GetSlicesCoeff(polyFr []fr.Element, dimE, j, l uint
 // implicitly pad slices to power of 2
 func (p *ParametrizedProver) GetSlicesCoeffBeforeFFT(polyFr []fr.Element, dimE, j, l uint64) ([]fr.Element, error) {
 	// there is a constant term
-	m := uint64(len(polyFr)) - 1
-	dim := (m - j) / l
-
+	m := uint64(dimE*l) - 1
+	dim := (m - j%l) / l
+	k := j % l
+	q := j / l
+	//fmt.Println("polyFr", len(polyFr), "dim", dim, "j", j, "l", l)
+	//fmt.Println("q", q, "j", j, "l", l, "dimE", dimE)
 	toeV := make([]fr.Element, 2*dimE-1)
 	for i := uint64(0); i < dim; i++ {
+		//	fmt.Println(i, m+q*l-(k+i*l))
 
-		toeV[i].Set(&polyFr[m-(j+i*l)])
+		toeV[i].Set(&polyFr[m+dimE*l*q-(k+i*l)])
+
 	}
 
 	// use precompute table
@@ -331,14 +424,3 @@ func CeilIntPowerOf2Num(d uint64) uint64 {
 	nextPower := math.Ceil(math.Log2(float64(d)))
 	return uint64(math.Pow(2.0, nextPower))
 }
-
-/*
-	fmt.Println("coeffStoreFFT")
-	for i := 0; i < len(coeffStoreFFT); i++ {
-		a := coeffStoreFFT[i]
-		for j := 0; j < len(a); j++ {
-			fmt.Printf("%v ", a[j].String())
-		}
-		fmt.Println()
-	}
-*/
