@@ -13,7 +13,7 @@ import (
 	"github.com/Layr-Labs/eigenda/encoding/fft"
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
 	"github.com/Layr-Labs/eigenda/encoding/rs"
-	cpu_rs "github.com/Layr-Labs/eigenda/encoding/rs/cpu"
+	gpu_rs "github.com/Layr-Labs/eigenda/encoding/rs/gpu"
 	"github.com/Layr-Labs/eigenda/encoding/utils/toeplitz"
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
@@ -21,7 +21,7 @@ import (
 )
 
 type ParametrizedProver struct {
-	*cpu_rs.Encoder
+	*gpu_rs.Encoder
 
 	*kzg.KzgConfig
 	Srs        *kzg.SRS
@@ -49,6 +49,108 @@ func (g *ParametrizedProver) EncodeBytes(inputBytes []byte) (*bn254.G1Affine, *b
 		return nil, nil, nil, nil, nil, fmt.Errorf("cannot convert bytes to field elements, %w", err)
 	}
 	return g.Encode(inputFr)
+}
+
+func (g *ParametrizedProver) EncodeBatch(inputFr [][]fr.Element) ([]*bn254.G1Affine, []*bn254.G2Affine, []*bn254.G2Affine, [][]encoding.Frame, [][]uint32, error) {
+	startTime := time.Now()
+	numBatch := len(inputFr)
+	polyBatch, framesBatch, indicesBatch, err := g.Encoder.EncodeBatch(inputFr)
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+
+	if len(polyBatch[0].Coeffs) > int(g.KzgConfig.SRSNumberToLoad) {
+		return nil, nil, nil, nil, nil, fmt.Errorf("poly Coeff length %v is greater than Loaded SRS points %v", len(polyBatch[0].Coeffs), int(g.KzgConfig.SRSNumberToLoad))
+	}
+
+	fmt.Println("hhs")
+
+	// compute commit for the full poly
+	commitBatch := make([]*bn254.G1Affine, numBatch)
+	lengthCommitmentBatch := make([]*bn254.G2Affine, numBatch)
+	lengthProofBatch := make([]*bn254.G2Affine, numBatch)
+	intermediate := time.Now()
+
+	for i := 0; i < numBatch; i++ {
+		commit, err := g.Commit(polyBatch[i].Coeffs)
+		if err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+		commitBatch[i] = &commit
+
+		config := ecc.MultiExpConfig{}
+
+		var lengthCommitment bn254.G2Affine
+		_, err = lengthCommitment.MultiExp(g.Srs.G2[:len(polyBatch[i].Coeffs)], polyBatch[i].Coeffs, config)
+		if err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+
+		lengthCommitmentBatch[i] = &lengthCommitment
+
+		chunkLength := uint64(len(inputFr))
+
+		log.Printf("    Commiting takes  %v\n", time.Since(intermediate))
+		intermediate = time.Now()
+
+		log.Printf("shift %v\n", g.SRSOrder-chunkLength)
+		log.Printf("order %v\n", len(g.Srs.G2))
+		log.Println("low degree verification info")
+
+		shiftedSecret := g.G2Trailing[g.KzgConfig.SRSNumberToLoad-chunkLength:]
+
+		fmt.Println(len(shiftedSecret), len(polyBatch[i].Coeffs))
+
+		//The proof of low degree is commitment of the polynomial shifted to the largest srs degree
+		var lengthProof bn254.G2Affine
+		_, err = lengthProof.MultiExp(shiftedSecret, polyBatch[i].Coeffs, config)
+		if err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+		lengthProofBatch[i] = &lengthProof
+
+		log.Printf("    Generating Length Proof takes  %v\n", time.Since(intermediate))
+		intermediate = time.Now()
+	}
+
+	// compute proofs
+	paddedCoeffs := make([]fr.Element, g.NumEvaluations())
+	copy(paddedCoeffs, polyBatch[0].Coeffs)
+
+	inputFrBatch := make([][]fr.Element, 16)
+	for i := 0; i < len(inputFrBatch); i++ {
+		inputFrBatch[i] = paddedCoeffs
+	}
+
+	proofsBatched, err := g.ProveBatchedCoset(inputFrBatch, g.NumChunks, g.ChunkLength, g.NumWorker)
+	proofs := proofsBatched[0]
+	//proofs, err := g.ProveAllCosetThreads(paddedCoeffs, g.NumChunks, g.ChunkLength, g.NumWorker)
+	//proofs, err := g.ProveAllCosetThreadsPipeline(paddedCoeffs, g.NumChunks, g.ChunkLength, g.NumWorker)
+
+	if err != nil {
+		return nil, nil, nil, nil, nil, fmt.Errorf("could not generate proofs: %v", err)
+	}
+
+	if g.Verbose {
+		log.Printf("    Proving takes    %v\n", time.Since(intermediate))
+	}
+
+	kzgFramesBatch := make([][]encoding.Frame, len(framesBatch))
+	for j := 0; j < numBatch; j++ {
+		frames := framesBatch[j]
+		kzgFrames := kzgFramesBatch[j]
+		for i, index := range indicesBatch[j] {
+			kzgFrames[i] = encoding.Frame{
+				Proof:  proofs[index],
+				Coeffs: frames[i].Coeffs,
+			}
+		}
+	}
+
+	if g.Verbose {
+		log.Printf("Total encoding took      %v\n", time.Since(startTime))
+	}
+	return commitBatch, lengthCommitmentBatch, lengthProofBatch, kzgFramesBatch, indicesBatch, nil
 }
 
 func (g *ParametrizedProver) Encode(inputFr []fr.Element) (*bn254.G1Affine, *bn254.G2Affine, *bn254.G2Affine, []encoding.Frame, []uint32, error) {
@@ -108,15 +210,19 @@ func (g *ParametrizedProver) Encode(inputFr []fr.Element) (*bn254.G1Affine, *bn2
 	paddedCoeffs := make([]fr.Element, g.NumEvaluations())
 	copy(paddedCoeffs, poly.Coeffs)
 
-	inputFrBatch := make([][]fr.Element, 10)
+	inputFrBatch := make([][]fr.Element, 1)
 	for i := 0; i < len(inputFrBatch); i++ {
 		inputFrBatch[i] = paddedCoeffs
 	}
 
+	proveBatchedCosetStart := time.Now()
+
 	proofsBatched, err := g.ProveBatchedCoset(inputFrBatch, g.NumChunks, g.ChunkLength, g.NumWorker)
+
 	proofs := proofsBatched[0]
 	//proofs, err := g.ProveAllCosetThreads(paddedCoeffs, g.NumChunks, g.ChunkLength, g.NumWorker)
 	//proofs, err := g.ProveAllCosetThreadsPipeline(paddedCoeffs, g.NumChunks, g.ChunkLength, g.NumWorker)
+	fmt.Println("***** Batch prove takes", time.Since(proveBatchedCosetStart))
 
 	if err != nil {
 		return nil, nil, nil, nil, nil, fmt.Errorf("could not generate proofs: %v", err)

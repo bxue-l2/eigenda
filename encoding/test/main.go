@@ -61,7 +61,7 @@ func readpoints() {
 }
 
 func TestGPUKzgRs() {
-	numSymbols := 32768 //32768
+	numSymbols := 32768 / 8 / 4 //32768
 	// encode parameters
 	numNode := uint64(4096) // 4096
 	numSys := uint64(512)   // 512
@@ -76,8 +76,8 @@ func TestGPUKzgRs() {
 		G1Path:          "../../inabox/resources/kzg/g1.point.300000",
 		G2Path:          "../../inabox/resources/kzg/g2.point.300000",
 		CacheDir:        "../../inabox/resources/kzg/SRSTables",
-		SRSOrder:        300000, // must be power of 2 to support precompute 262144
-		SRSNumberToLoad: 300000,
+		SRSOrder:        50000, // must be power of 2 to support precompute 262144
+		SRSNumberToLoad: 50000,
 		NumWorker:       uint64(runtime.GOMAXPROCS(0)),
 	}
 
@@ -99,6 +99,31 @@ func TestGPUKzgRs() {
 
 	fmt.Printf("Input \n")
 	//printFr(inputFr)
+
+	/*
+		numBatch := 1
+		inputFrBatch := make([][]fr.Element, numBatch)
+		for i := 0; i < numBatch; i++ {
+			inputFrBatch[i] = inputFr
+		}
+
+		encodeStart := time.Now()
+		//inputSize := uint64(len(inputFr))
+		commitBatch, legnthCommitBatch, legnthProofBatch, framesBatch, fIndicesBatch, err := enc.EncodeBatch(inputFrBatch)
+		_ = legnthProofBatch
+		_ = legnthCommitBatch
+		_ = commitBatch
+		_ = framesBatch
+		_ = fIndicesBatch
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("Encode takes", time.Since(encodeStart))
+
+		commit := commitBatch[0]
+		frames := framesBatch[0]
+		fIndices := fIndicesBatch[0]
+	*/
 
 	encodeStart := time.Now()
 	//inputSize := uint64(len(inputFr))

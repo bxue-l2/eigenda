@@ -16,7 +16,7 @@ import (
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
 	"github.com/Layr-Labs/eigenda/encoding/kzg/prover"
 	"github.com/Layr-Labs/eigenda/encoding/rs"
-	cpu_rs "github.com/Layr-Labs/eigenda/encoding/rs/cpu"
+	gpu_rs "github.com/Layr-Labs/eigenda/encoding/rs/gpu"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/ingonyama-zk/icicle/v2/wrappers/golang/core"
 
@@ -224,7 +224,7 @@ func (g *Prover) newProver(params encoding.EncodingParams) (*ParametrizedProver,
 		return nil, fmt.Errorf("the supplied encoding parameters are not valid with respect to the SRS. ChunkLength: %d, NumChunks: %d, SRSOrder: %d", params.ChunkLength, params.NumChunks, g.SRSOrder)
 	}
 
-	encoder, err := cpu_rs.NewEncoder(params, g.Verbose)
+	encoder, err := gpu_rs.NewEncoder(params, g.Verbose)
 	if err != nil {
 		log.Println("Could not create encoder: ", err)
 		return nil, err
