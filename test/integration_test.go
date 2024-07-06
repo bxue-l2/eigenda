@@ -17,7 +17,7 @@ import (
 
 	"github.com/Layr-Labs/eigenda/common/pubip"
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
-	"github.com/Layr-Labs/eigenda/encoding/kzg/prover"
+	"github.com/Layr-Labs/eigenda/encoding/kzg/prover/cpu"
 	"github.com/Layr-Labs/eigenda/encoding/kzg/verifier"
 	"github.com/Layr-Labs/eigenda/encoding/utils/codec"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fp"
@@ -90,7 +90,7 @@ func mustMakeTestComponents() (encoding.Prover, encoding.Verifier) {
 		NumWorker:       uint64(runtime.GOMAXPROCS(0)),
 	}
 
-	p, err := prover.NewProver(config, true)
+	p, err := cpu.NewProver(config, true)
 	if err != nil {
 		log.Fatal(err)
 	}

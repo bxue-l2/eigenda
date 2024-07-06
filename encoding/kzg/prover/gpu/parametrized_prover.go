@@ -210,7 +210,7 @@ func (g *ParametrizedProver) Encode(inputFr []fr.Element) (*bn254.G1Affine, *bn2
 	paddedCoeffs := make([]fr.Element, g.NumEvaluations())
 	copy(paddedCoeffs, poly.Coeffs)
 
-	inputFrBatch := make([][]fr.Element, 1)
+	inputFrBatch := make([][]fr.Element, 8)
 	for i := 0; i < len(inputFrBatch); i++ {
 		inputFrBatch[i] = paddedCoeffs
 	}

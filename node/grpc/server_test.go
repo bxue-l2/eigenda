@@ -19,7 +19,7 @@ import (
 	coremock "github.com/Layr-Labs/eigenda/core/mock"
 	"github.com/Layr-Labs/eigenda/encoding"
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
-	"github.com/Layr-Labs/eigenda/encoding/kzg/prover"
+	"github.com/Layr-Labs/eigenda/encoding/kzg/prover/cpu"
 	"github.com/Layr-Labs/eigenda/encoding/kzg/verifier"
 	"github.com/Layr-Labs/eigenda/node"
 	"github.com/Layr-Labs/eigenda/node/grpc"
@@ -61,7 +61,7 @@ func makeTestComponents() (encoding.Prover, encoding.Verifier, error) {
 		NumWorker:       uint64(runtime.GOMAXPROCS(0)),
 	}
 
-	p, err := prover.NewProver(config, true)
+	p, err := cpu.NewProver(config, true)
 	if err != nil {
 		return nil, nil, err
 	}

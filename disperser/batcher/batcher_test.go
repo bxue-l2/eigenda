@@ -24,7 +24,7 @@ import (
 	dmock "github.com/Layr-Labs/eigenda/disperser/mock"
 	"github.com/Layr-Labs/eigenda/encoding"
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
-	"github.com/Layr-Labs/eigenda/encoding/kzg/prover"
+	"github.com/Layr-Labs/eigenda/encoding/kzg/prover/cpu"
 	"github.com/Layr-Labs/eigenda/encoding/utils/codec"
 	gethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -57,7 +57,7 @@ func makeTestProver() (encoding.Prover, error) {
 		NumWorker:       uint64(runtime.GOMAXPROCS(0)),
 	}
 
-	return prover.NewProver(config, true)
+	return cpu.NewProver(config, true)
 }
 
 func makeTestBlob(securityParams []*core.SecurityParam) core.Blob {

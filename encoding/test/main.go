@@ -61,7 +61,7 @@ func readpoints() {
 }
 
 func TestGPUKzgRs() {
-	numSymbols := 32768 / 8 / 4 //32768
+	numSymbols := 32768 //32768
 	// encode parameters
 	numNode := uint64(4096) // 4096
 	numSys := uint64(512)   // 512
@@ -76,15 +76,17 @@ func TestGPUKzgRs() {
 		G1Path:          "../../inabox/resources/kzg/g1.point.300000",
 		G2Path:          "../../inabox/resources/kzg/g2.point.300000",
 		CacheDir:        "../../inabox/resources/kzg/SRSTables",
-		SRSOrder:        50000, // must be power of 2 to support precompute 262144
-		SRSNumberToLoad: 50000,
+		SRSOrder:        300000, // must be power of 2 to support precompute 262144
+		SRSNumberToLoad: 300000,
 		NumWorker:       uint64(runtime.GOMAXPROCS(0)),
 	}
 
 	// create encoding object
 	p, _ := gpu.NewProver(kzgConfig, true)
+	fmt.Println(uint64(numSymbols) / uint64(numSys))
 
-	params := encoding.EncodingParams{NumChunks: numNode, ChunkLength: uint64(numSymbols) / uint64(numSys)}
+	params := encoding.EncodingParams{NumChunks: numNode, ChunkLength: uint64(numSymbols) / uint64(numSys)} //
+
 	enc, err := p.GetKzgEncoder(params)
 	if err != nil {
 		fmt.Println("error GetKzgEncoder", err)

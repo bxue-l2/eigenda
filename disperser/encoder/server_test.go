@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
+	"github.com/Layr-Labs/eigenda/encoding/kzg/prover/cpu"
 	encmock "github.com/Layr-Labs/eigenda/encoding/mock"
 	"github.com/Layr-Labs/eigensdk-go/logging"
 
@@ -23,7 +24,6 @@ import (
 	coremock "github.com/Layr-Labs/eigenda/core/mock"
 	pb "github.com/Layr-Labs/eigenda/disperser/api/grpc/encoder"
 	"github.com/Layr-Labs/eigenda/encoding"
-	"github.com/Layr-Labs/eigenda/encoding/kzg/prover"
 	"github.com/Layr-Labs/eigenda/encoding/utils/codec"
 )
 
@@ -43,7 +43,7 @@ func makeTestProver(numPoint uint64) (encoding.Prover, ServerConfig) {
 		NumWorker:       uint64(runtime.GOMAXPROCS(0)),
 	}
 
-	p, _ := prover.NewProver(kzgConfig, true)
+	p, _ := cpu.NewProver(kzgConfig, true)
 	encoderServerConfig := ServerConfig{
 		GrpcPort:              "3000",
 		MaxConcurrentRequests: 16,

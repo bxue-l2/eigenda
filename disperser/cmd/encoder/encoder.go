@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Layr-Labs/eigenda/disperser/encoder"
-	"github.com/Layr-Labs/eigenda/encoding/kzg/prover"
+	"github.com/Layr-Labs/eigenda/encoding/kzg/prover/cpu"
 	"github.com/Layr-Labs/eigensdk-go/logging"
 )
 
@@ -15,7 +15,7 @@ type EncoderGRPCServer struct {
 
 func NewEncoderGRPCServer(config Config, _logger logging.Logger) (*EncoderGRPCServer, error) {
 	logger := _logger.With("component", "EncoderGRPCServer")
-	p, err := prover.NewProver(&config.EncoderConfig, true)
+	p, err := cpu.NewProver(&config.EncoderConfig, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create encoder: %w", err)
 	}
