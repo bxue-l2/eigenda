@@ -25,7 +25,6 @@ type ParametrizedProver struct {
 	SFs        *fft.FFTSettings   // fft used for submatrix product helper
 	FFTPointsT [][]bn254.G1Affine // transpose of FFTPoints
 
-	UseGpu   bool
 	Computer ProofComputeDevice
 }
 

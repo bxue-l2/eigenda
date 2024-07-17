@@ -98,8 +98,6 @@ func TestKzgRs() {
 	// create encoding object
 	p, _ := prover.NewProver(kzgConfig, true)
 
-	p.UseGpu = true
-
 	params := encoding.EncodingParams{NumChunks: numNode, ChunkLength: uint64(numSymbols) / uint64(numSys)}
 	enc, _ := p.GetKzgEncoder(params)
 
