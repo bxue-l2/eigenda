@@ -279,7 +279,6 @@ func (g *Prover) newProver(params encoding.EncodingParams) (*ParametrizedProver,
 		Ks:         ks,
 		SFs:        sfs,
 		FFTPointsT: fftPointsT,
-		UseGpu:     g.UseGpu,
 		Computer:   computer,
 	}, nil
 }

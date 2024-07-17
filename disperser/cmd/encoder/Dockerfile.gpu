@@ -8,10 +8,11 @@ RUN apt-get update && apt-get install -y \
     jq \
     bash \
     curl \
+    cmake \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Go
-ENV GOLANG_VERSION 1.21.1
+ENV GOLANG_VERSION=1.21.1
 RUN curl -L https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz | tar -xz -C /usr/local
 ENV PATH="/usr/local/go/bin:${PATH}"
 
@@ -32,11 +33,19 @@ COPY core /app/core
 COPY api /app/api
 COPY indexer /app/indexer
 COPY encoding /app/encoding
+COPY ./icicle /app/icicle
 
-# Set CUDA environment variables
-ENV CPATH="/usr/local/cuda/include:${CPATH}"
-ENV LIBRARY_PATH="/usr/local/cuda/lib64:${LIBRARY_PATH}"
-ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
+# Build Icicle libraries
+WORKDIR /app/icicle/wrappers/golang
+RUN ./build.sh -curve=bn254 -ecntt
+
+# Set up CUDA paths
+ENV CUDA_PATH=/usr/local/cuda
+ENV LD_LIBRARY_PATH=${CUDA_PATH}/lib64:${LD_LIBRARY_PATH}
+ENV CPATH=${CUDA_PATH}/include:${CPATH}
+
+# Set up CGO flags for shared libraries
+ENV CGO_LDFLAGS="-L/app/icicle/icicle/lib"
 
 # Build the server with GPU support
 WORKDIR /app/disperser
