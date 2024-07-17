@@ -45,7 +45,7 @@ ENV LD_LIBRARY_PATH=${CUDA_PATH}/lib64:${LD_LIBRARY_PATH}
 ENV CPATH=${CUDA_PATH}/include:${CPATH}
 
 # Set up CGO flags for shared libraries
-ENV CGO_LDFLAGS="-L/app/icicle/icicle/lib"
+ENV CGO_LDFLAGS="-L/app/icicle/icicle/build/lib"
 
 # Build the server with GPU support
 WORKDIR /app/disperser
