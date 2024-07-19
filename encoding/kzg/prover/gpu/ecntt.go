@@ -22,7 +22,7 @@ func (c *GpuComputeDevice) ECNttToGnark(batchPoints core.HostOrDeviceSlice, isIn
 	}
 
 	// convert icicle projective to gnark affine
-	gpuFFTBatch := gpu_utils.HostSliceIcicleProjectiveToGnarkAffine(output, int(c.NumWorker))
+	gpuFFTBatch := gpu_utils.HostSliceIcicleProjectiveToGnarkAffine(output, 2)
 
 	return gpuFFTBatch, nil
 }

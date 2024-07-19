@@ -28,7 +28,7 @@ func (c *GpuComputeDevice) NTT(batchFr [][]fr.Element) (core.HostSlice[bn254_ici
 	for i := 0; i < len(batchFr); i++ {
 		flattenBatchFr = append(flattenBatchFr, batchFr[i]...)
 	}
-	flattenBatchSf := gpu_utils.ConvertFrToScalarFieldsBytesThread(flattenBatchFr, int(c.NumWorker))
+	flattenBatchSf := gpu_utils.ConvertFrToScalarFieldsBytesThread(flattenBatchFr, 2)
 	scalarsCopy := core.HostSliceFromElements[bn254_icicle.ScalarField](flattenBatchSf)
 
 	// run ntt
