@@ -12,11 +12,11 @@ import (
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
 	"github.com/Layr-Labs/eigenda/encoding/utils/gpu_utils"
 	"github.com/Layr-Labs/eigenda/encoding/utils/toeplitz"
-	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/ingonyama-zk/icicle/v2/wrappers/golang/core"
 	bn254_icicle "github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254"
+	icicle_bn254 "github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254"
 	bn254_icicle_g2 "github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254/g2"
 )
 
@@ -29,6 +29,7 @@ type GpuComputeDevice struct {
 	*kzg.KzgConfig
 	Fs             *fft.FFTSettings
 	FlatFFTPointsT []bn254_icicle.Affine
+	SRSIcicle      []bn254_icicle.Affine
 	SFs            *fft.FFTSettings
 	Srs            *kzg.SRS
 	G2Trailing     []bn254.G2Affine
@@ -58,13 +59,24 @@ func (p *GpuComputeDevice) ComputeLengthProof(coeffs []fr.Element) (*bn254.G2Aff
 
 // benchmarks shows cpu commit on 2MB blob only takes 11.673738ms. For now, use cpu
 func (p *GpuComputeDevice) ComputeCommitment(coeffs []fr.Element) (*bn254.G1Affine, error) {
-	// compute commit for the full poly
-	config := ecc.MultiExpConfig{}
-	var commitment bn254.G1Affine
-	_, err := commitment.MultiExp(p.Srs.G1[:len(coeffs)], coeffs, config)
+
+	coeffsPadded := make([]fr.Element, p.SRSNumberToLoad)
+	copy(coeffsPadded, coeffs)
+	inputSF := gpu_utils.ConvertFrToScalarFieldsBytesThread(coeffsPadded, 2)
+	scalarsCopy := core.HostSliceFromElements[bn254_icicle.ScalarField](inputSF)
+	p.GpuLock.Lock()
+	defer p.GpuLock.Unlock()
+	commitmentIcicle, err := p.MsmBatch(scalarsCopy, p.SRSIcicle, 1)
 	if err != nil {
 		return nil, err
 	}
+
+	outHost := make(core.HostSlice[icicle_bn254.Projective], 1)
+	outHost.CopyFromDevice(&commitmentIcicle)
+	commitmentIcicle.Free()
+
+	commitment := gpu_utils.IcicleProjectiveToGnarkAffine(outHost[0])
+
 	return &commitment, nil
 }
 
