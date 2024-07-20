@@ -251,6 +251,8 @@ func (g *Prover) newProver(params encoding.EncodingParams) (*ParametrizedProver,
 	// GPU Setup
 	nttCfg := gpu_utils.SetupNTT()
 	flatFftPointsT := gpu_utils.SetupMsm(fftPointsT)
+	heads, trails := gpu_utils.SetupMsmG2(g.Srs.G2[:g.SRSNumberToLoad], g.G2Trailing)
+
 	GpuLock := sync.Mutex{}
 	computer = &gpu.GpuComputeDevice{
 		Fs:             fs,
@@ -261,6 +263,8 @@ func (g *Prover) newProver(params encoding.EncodingParams) (*ParametrizedProver,
 		KzgConfig:      g.KzgConfig,
 		NttCfg:         nttCfg,
 		GpuLock:        &GpuLock,
+		HeadsG2:        heads,
+		TrailsG2:       trails,
 	}
 
 	RsComputeDevice = &rs_gpu.GpuComputeDevice{

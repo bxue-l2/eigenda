@@ -10,12 +10,14 @@ import (
 
 	"github.com/Layr-Labs/eigenda/encoding/fft"
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
+	"github.com/Layr-Labs/eigenda/encoding/utils/gpu_utils"
 	"github.com/Layr-Labs/eigenda/encoding/utils/toeplitz"
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/ingonyama-zk/icicle/v2/wrappers/golang/core"
 	bn254_icicle "github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254"
+	bn254_icicle_g2 "github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254/g2"
 )
 
 type WorkerResult struct {
@@ -32,20 +34,26 @@ type GpuComputeDevice struct {
 	G2Trailing     []bn254.G2Affine
 	NttCfg         core.NTTConfig[[bn254_icicle.SCALAR_LIMBS]uint32]
 	GpuLock        *sync.Mutex // lock whenever gpu is needed,
+	HeadsG2        []bn254_icicle_g2.G2Affine
+	TrailsG2       []bn254_icicle_g2.G2Affine
 }
 
 // benchmarks shows cpu commit on 2MB blob only takes 24.165562ms. For now, use cpu
 func (p *GpuComputeDevice) ComputeLengthProof(coeffs []fr.Element) (*bn254.G2Affine, error) {
-	inputLength := uint64(len(coeffs))
-	shiftedSecret := p.G2Trailing[p.KzgConfig.SRSNumberToLoad-inputLength:]
-	config := ecc.MultiExpConfig{}
-	//The proof of low degree is commitment of the polynomial shifted to the largest srs degree
-	var lengthProof bn254.G2Affine
-	_, err := lengthProof.MultiExp(shiftedSecret, coeffs, config)
+	coeffsPadded := make([]fr.Element, int(p.SRSNumberToLoad)-len(coeffs))
+	coeffsPadded = append(coeffsPadded, coeffs...)
+
+	inputSF := gpu_utils.ConvertFrToScalarFieldsBytesThread(coeffsPadded, 2)
+	scalarsCopy := core.HostSliceFromElements[bn254_icicle.ScalarField](inputSF)
+	p.GpuLock.Lock()
+	defer p.GpuLock.Unlock()
+
+	lengthProof, err := p.MsmBatchG2(scalarsCopy, p.TrailsG2)
 	if err != nil {
 		return nil, err
 	}
-	return &lengthProof, nil
+
+	return lengthProof, nil
 }
 
 // benchmarks shows cpu commit on 2MB blob only takes 11.673738ms. For now, use cpu
@@ -62,14 +70,18 @@ func (p *GpuComputeDevice) ComputeCommitment(coeffs []fr.Element) (*bn254.G1Affi
 
 // benchmarks shows cpu commit on 2MB blob only takes 31.318661ms. For now, use cpu
 func (p *GpuComputeDevice) ComputeLengthCommitment(coeffs []fr.Element) (*bn254.G2Affine, error) {
-	config := ecc.MultiExpConfig{}
-
-	var lengthCommitment bn254.G2Affine
-	_, err := lengthCommitment.MultiExp(p.Srs.G2[:len(coeffs)], coeffs, config)
+	coeffsPadded := make([]fr.Element, p.SRSNumberToLoad)
+	copy(coeffsPadded, coeffs)
+	inputSF := gpu_utils.ConvertFrToScalarFieldsBytesThread(coeffsPadded, 2)
+	scalarsCopy := core.HostSliceFromElements[bn254_icicle.ScalarField](inputSF)
+	p.GpuLock.Lock()
+	defer p.GpuLock.Unlock()
+	lengthCommitment, err := p.MsmBatchG2(scalarsCopy, p.HeadsG2)
 	if err != nil {
 		return nil, err
 	}
-	return &lengthCommitment, nil
+
+	return lengthCommitment, nil
 }
 
 // This function supports batching over multiple blobs.
