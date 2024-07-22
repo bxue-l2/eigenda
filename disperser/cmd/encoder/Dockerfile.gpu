@@ -37,7 +37,7 @@ COPY ./icicle /app/icicle
 
 # Build Icicle libraries
 WORKDIR /app/icicle/wrappers/golang
-RUN ./build.sh -curve=bn254 -ecntt
+# RUN ./build.sh -curve=bn254 -ecntt
 
 # Set up CUDA paths
 ENV CUDA_PATH=/usr/local/cuda
@@ -51,8 +51,8 @@ ENV CGO_LDFLAGS="-L/app/icicle/icicle/build/lib"
 WORKDIR /app/disperser
 RUN go build -tags gpu -o ./bin/server ./cmd/encoder
 
-# Start a new stage for the runtime image
-FROM nvidia/cuda:12.0.0-runtime-ubuntu22.04
+# Start a new stage for the base image
+FROM nvidia/cuda:12.0.0-base-ubuntu22.04
 
 COPY --from=builder /app/disperser/bin/server /usr/local/bin/server
 

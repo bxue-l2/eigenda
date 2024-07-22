@@ -44,7 +44,7 @@ func (p *GpuComputeDevice) ComputeLengthProof(coeffs []fr.Element) (*bn254.G2Aff
 	coeffsPadded := make([]fr.Element, int(p.SRSNumberToLoad)-len(coeffs))
 	coeffsPadded = append(coeffsPadded, coeffs...)
 
-	inputSF := gpu_utils.ConvertFrToScalarFieldsBytesThread(coeffsPadded, 2)
+	inputSF := gpu_utils.ConvertFrToScalarFieldsBytesThread(coeffsPadded, int(p.NumWorker))
 	scalarsCopy := core.HostSliceFromElements[bn254_icicle.ScalarField](inputSF)
 	p.GpuLock.Lock()
 	defer p.GpuLock.Unlock()
@@ -62,7 +62,7 @@ func (p *GpuComputeDevice) ComputeCommitment(coeffs []fr.Element) (*bn254.G1Affi
 
 	coeffsPadded := make([]fr.Element, p.SRSNumberToLoad)
 	copy(coeffsPadded, coeffs)
-	inputSF := gpu_utils.ConvertFrToScalarFieldsBytesThread(coeffsPadded, 2)
+	inputSF := gpu_utils.ConvertFrToScalarFieldsBytesThread(coeffsPadded, int(p.NumWorker))
 	scalarsCopy := core.HostSliceFromElements[bn254_icicle.ScalarField](inputSF)
 	p.GpuLock.Lock()
 	defer p.GpuLock.Unlock()
@@ -84,8 +84,14 @@ func (p *GpuComputeDevice) ComputeCommitment(coeffs []fr.Element) (*bn254.G1Affi
 func (p *GpuComputeDevice) ComputeLengthCommitment(coeffs []fr.Element) (*bn254.G2Affine, error) {
 	coeffsPadded := make([]fr.Element, p.SRSNumberToLoad)
 	copy(coeffsPadded, coeffs)
-	inputSF := gpu_utils.ConvertFrToScalarFieldsBytesThread(coeffsPadded, 2)
+
+	start := time.Now()
+	inputSF := gpu_utils.ConvertFrToScalarFieldsBytesThread(coeffsPadded, int(p.NumWorker))
 	scalarsCopy := core.HostSliceFromElements[bn254_icicle.ScalarField](inputSF)
+	end := time.Since(start)
+
+	fmt.Println("ConvertFrToScalarFieldsBytesThread", end)
+
 	p.GpuLock.Lock()
 	defer p.GpuLock.Unlock()
 	lengthCommitment, err := p.MsmBatchG2(scalarsCopy, p.HeadsG2)
