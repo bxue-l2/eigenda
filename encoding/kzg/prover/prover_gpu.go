@@ -1,3 +1,6 @@
+//go:build gpu
+// +build gpu
+
 package prover
 
 import (
@@ -14,10 +17,8 @@ import (
 	"github.com/Layr-Labs/eigenda/encoding"
 	"github.com/Layr-Labs/eigenda/encoding/fft"
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
-	"github.com/Layr-Labs/eigenda/encoding/kzg/prover/cpu"
 	"github.com/Layr-Labs/eigenda/encoding/kzg/prover/gpu"
 	"github.com/Layr-Labs/eigenda/encoding/rs"
-	rs_cpu "github.com/Layr-Labs/eigenda/encoding/rs/cpu"
 	rs_gpu "github.com/Layr-Labs/eigenda/encoding/rs/gpu"
 	"github.com/Layr-Labs/eigenda/encoding/utils/gpu_utils"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
@@ -33,7 +34,6 @@ type Prover struct {
 	LoadG2Points bool
 
 	ParametrizedProvers map[encoding.EncodingParams]*ParametrizedProver
-	UseGpu              bool
 }
 
 var _ encoding.Prover = &Prover{}
@@ -247,41 +247,34 @@ func (g *Prover) newProver(params encoding.EncodingParams) (*ParametrizedProver,
 
 	// Set KZG Prover computer
 	var computer ProofComputeDevice
-	if !g.UseGpu {
-		computer = &cpu.CpuComputer{
-			Fs:         fs,
-			FFTPointsT: fftPointsT,
-			SFs:        sfs,
-			Srs:        g.Srs,
-			G2Trailing: g.G2Trailing,
-			KzgConfig:  g.KzgConfig,
-		}
-		RsComputeDevice = &rs_cpu.CpuComputer{
-			Fs:             fs,
-			EncodingParams: params,
-		}
-	} else {
-		nttCfg := gpu_utils.SetupNTT()
-		flatFftPointsT := gpu_utils.SetupMsm(fftPointsT)
-		GpuLock := sync.Mutex{}
-		computer = &gpu.GpuComputeDevice{
-			Fs:             fs,
-			FlatFFTPointsT: flatFftPointsT,
-			SFs:            sfs,
-			Srs:            g.Srs,
-			G2Trailing:     g.G2Trailing,
-			KzgConfig:      g.KzgConfig,
-			NttCfg:         nttCfg,
-			GpuLock:        &GpuLock,
-		}
 
-		RsComputeDevice = &rs_gpu.GpuComputeDevice{
-			Fs:             fs,
-			EncodingParams: params,
-			NttCfg:         nttCfg,
-			GpuLock:        &GpuLock,
-		}
+	// GPU Setup
+	nttCfg := gpu_utils.SetupNTT()
+	flatFftPointsT, srsG1Icicle := gpu_utils.SetupMsm(fftPointsT, g.Srs.G1[:g.SRSNumberToLoad])
+	heads, trails := gpu_utils.SetupMsmG2(g.Srs.G2[:g.SRSNumberToLoad], g.G2Trailing)
+
+	GpuLock := sync.Mutex{}
+	computer = &gpu.GpuComputeDevice{
+		Fs:             fs,
+		FlatFFTPointsT: flatFftPointsT,
+		SFs:            sfs,
+		Srs:            g.Srs,
+		G2Trailing:     g.G2Trailing,
+		KzgConfig:      g.KzgConfig,
+		NttCfg:         nttCfg,
+		GpuLock:        &GpuLock,
+		HeadsG2:        heads,
+		TrailsG2:       trails,
+		SRSIcicle:      srsG1Icicle,
 	}
+
+	RsComputeDevice = &rs_gpu.GpuComputeDevice{
+		Fs:             fs,
+		EncodingParams: params,
+		NttCfg:         nttCfg,
+		GpuLock:        &GpuLock,
+	}
+
 	encoder.Computer = RsComputeDevice
 
 	return &ParametrizedProver{
@@ -291,9 +284,26 @@ func (g *Prover) newProver(params encoding.EncodingParams) (*ParametrizedProver,
 		Ks:         ks,
 		SFs:        sfs,
 		FFTPointsT: fftPointsT,
-		UseGpu:     g.UseGpu,
 		Computer:   computer,
 	}, nil
+}
+
+// Decode takes in the chunks, indices, and encoding parameters and returns the decoded blob
+// The result is trimmed to the given maxInputSize.
+func (p *Prover) Decode(chunks []*encoding.Frame, indices []encoding.ChunkNumber, params encoding.EncodingParams, maxInputSize uint64) ([]byte, error) {
+	frames := make([]encoding.Frame, len(chunks))
+	for i := range chunks {
+		frames[i] = encoding.Frame{
+			Proof:  chunks[i].Proof,
+			Coeffs: chunks[i].Coeffs,
+		}
+	}
+	encoder, err := p.GetKzgEncoder(params)
+	if err != nil {
+		return nil, err
+	}
+
+	return encoder.Decode(frames, toUint64Array(indices), maxInputSize)
 }
 
 // Detect the precomputed table from the specified directory
@@ -335,24 +345,6 @@ func GetAllPrecomputedSrsMap(tableDir string) ([]encoding.EncodingParams, error)
 		tables = append(tables, params)
 	}
 	return tables, nil
-}
-
-// Decode takes in the chunks, indices, and encoding parameters and returns the decoded blob
-// The result is trimmed to the given maxInputSize.
-func (p *Prover) Decode(chunks []*encoding.Frame, indices []encoding.ChunkNumber, params encoding.EncodingParams, maxInputSize uint64) ([]byte, error) {
-	frames := make([]encoding.Frame, len(chunks))
-	for i := range chunks {
-		frames[i] = encoding.Frame{
-			Proof:  chunks[i].Proof,
-			Coeffs: chunks[i].Coeffs,
-		}
-	}
-	encoder, err := p.GetKzgEncoder(params)
-	if err != nil {
-		return nil, err
-	}
-
-	return encoder.Decode(frames, toUint64Array(indices), maxInputSize)
 }
 
 func toUint64Array(chunkIndices []encoding.ChunkNumber) []uint64 {

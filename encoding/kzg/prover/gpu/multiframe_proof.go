@@ -1,3 +1,6 @@
+//go:build gpu
+// +build gpu
+
 package gpu
 
 import (
@@ -7,12 +10,14 @@ import (
 
 	"github.com/Layr-Labs/eigenda/encoding/fft"
 	"github.com/Layr-Labs/eigenda/encoding/kzg"
+	"github.com/Layr-Labs/eigenda/encoding/utils/gpu_utils"
 	"github.com/Layr-Labs/eigenda/encoding/utils/toeplitz"
-	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/ingonyama-zk/icicle/v2/wrappers/golang/core"
 	bn254_icicle "github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254"
+	icicle_bn254 "github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254"
+	bn254_icicle_g2 "github.com/ingonyama-zk/icicle/v2/wrappers/golang/curves/bn254/g2"
 )
 
 type WorkerResult struct {
@@ -24,49 +29,77 @@ type GpuComputeDevice struct {
 	*kzg.KzgConfig
 	Fs             *fft.FFTSettings
 	FlatFFTPointsT []bn254_icicle.Affine
+	SRSIcicle      []bn254_icicle.Affine
 	SFs            *fft.FFTSettings
 	Srs            *kzg.SRS
 	G2Trailing     []bn254.G2Affine
 	NttCfg         core.NTTConfig[[bn254_icicle.SCALAR_LIMBS]uint32]
 	GpuLock        *sync.Mutex // lock whenever gpu is needed,
+	HeadsG2        []bn254_icicle_g2.G2Affine
+	TrailsG2       []bn254_icicle_g2.G2Affine
 }
 
 // benchmarks shows cpu commit on 2MB blob only takes 24.165562ms. For now, use cpu
 func (p *GpuComputeDevice) ComputeLengthProof(coeffs []fr.Element) (*bn254.G2Affine, error) {
-	inputLength := uint64(len(coeffs))
-	shiftedSecret := p.G2Trailing[p.KzgConfig.SRSNumberToLoad-inputLength:]
-	config := ecc.MultiExpConfig{}
-	//The proof of low degree is commitment of the polynomial shifted to the largest srs degree
-	var lengthProof bn254.G2Affine
-	_, err := lengthProof.MultiExp(shiftedSecret, coeffs, config)
+	coeffsPadded := make([]fr.Element, int(p.SRSNumberToLoad)-len(coeffs))
+	coeffsPadded = append(coeffsPadded, coeffs...)
+
+	inputSF := gpu_utils.ConvertFrToScalarFieldsBytesThread(coeffsPadded, int(p.NumWorker))
+	scalarsCopy := core.HostSliceFromElements[bn254_icicle.ScalarField](inputSF)
+	p.GpuLock.Lock()
+	defer p.GpuLock.Unlock()
+
+	lengthProof, err := p.MsmBatchG2(scalarsCopy, p.TrailsG2)
 	if err != nil {
 		return nil, err
 	}
-	return &lengthProof, nil
+
+	return lengthProof, nil
 }
 
 // benchmarks shows cpu commit on 2MB blob only takes 11.673738ms. For now, use cpu
 func (p *GpuComputeDevice) ComputeCommitment(coeffs []fr.Element) (*bn254.G1Affine, error) {
-	// compute commit for the full poly
-	config := ecc.MultiExpConfig{}
-	var commitment bn254.G1Affine
-	_, err := commitment.MultiExp(p.Srs.G1[:len(coeffs)], coeffs, config)
+
+	coeffsPadded := make([]fr.Element, p.SRSNumberToLoad)
+	copy(coeffsPadded, coeffs)
+	inputSF := gpu_utils.ConvertFrToScalarFieldsBytesThread(coeffsPadded, int(p.NumWorker))
+	scalarsCopy := core.HostSliceFromElements[bn254_icicle.ScalarField](inputSF)
+	p.GpuLock.Lock()
+	defer p.GpuLock.Unlock()
+	commitmentIcicle, err := p.MsmBatch(scalarsCopy, p.SRSIcicle, 1)
 	if err != nil {
 		return nil, err
 	}
+
+	outHost := make(core.HostSlice[icicle_bn254.Projective], 1)
+	outHost.CopyFromDevice(&commitmentIcicle)
+	commitmentIcicle.Free()
+
+	commitment := gpu_utils.IcicleProjectiveToGnarkAffine(outHost[0])
+
 	return &commitment, nil
 }
 
 // benchmarks shows cpu commit on 2MB blob only takes 31.318661ms. For now, use cpu
 func (p *GpuComputeDevice) ComputeLengthCommitment(coeffs []fr.Element) (*bn254.G2Affine, error) {
-	config := ecc.MultiExpConfig{}
+	coeffsPadded := make([]fr.Element, p.SRSNumberToLoad)
+	copy(coeffsPadded, coeffs)
 
-	var lengthCommitment bn254.G2Affine
-	_, err := lengthCommitment.MultiExp(p.Srs.G2[:len(coeffs)], coeffs, config)
+	start := time.Now()
+	inputSF := gpu_utils.ConvertFrToScalarFieldsBytesThread(coeffsPadded, int(p.NumWorker))
+	scalarsCopy := core.HostSliceFromElements[bn254_icicle.ScalarField](inputSF)
+	end := time.Since(start)
+
+	fmt.Println("ConvertFrToScalarFieldsBytesThread", end)
+
+	p.GpuLock.Lock()
+	defer p.GpuLock.Unlock()
+	lengthCommitment, err := p.MsmBatchG2(scalarsCopy, p.HeadsG2)
 	if err != nil {
 		return nil, err
 	}
-	return &lengthCommitment, nil
+
+	return lengthCommitment, nil
 }
 
 // This function supports batching over multiple blobs.

@@ -52,7 +52,7 @@ func readpoints() {
 */
 
 func TestKzgRs() {
-	isSmallTest := false
+	isSmallTest := true
 
 	numSymbols := 4096 / 8
 	// encode parameters
@@ -98,8 +98,6 @@ func TestKzgRs() {
 	// create encoding object
 	p, _ := prover.NewProver(kzgConfig, true)
 
-	p.UseGpu = true
-
 	params := encoding.EncodingParams{NumChunks: numNode, ChunkLength: uint64(numSymbols) / uint64(numSys)}
 	enc, _ := p.GetKzgEncoder(params)
 
@@ -111,10 +109,13 @@ func TestKzgRs() {
 	}
 
 	fmt.Printf("Input \n")
-	//printFr(inputFr)
+	printFr(inputFr)
 
 	//inputSize := uint64(len(inputFr))
 	commit, lengthCommit, lengthProof, frames, fIndices, err := enc.Encode(inputFr)
+	fmt.Println(lengthProof.String())
+	fmt.Println(lengthCommit.String())
+
 	_ = lengthProof
 	_ = lengthCommit
 	_ = commit
